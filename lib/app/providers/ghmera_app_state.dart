@@ -58,10 +58,12 @@ class GhmeraAppState extends ChangeNotifier {
   final RequestMatchingEngine _requestMatchingEngine =
       const RequestMatchingEngine();
   StreamSubscription<User?>? _authStateSubscription;
-  StreamSubscription<Map<String, dynamic>?>? _remoteDatabaseSubscription;
+  StreamSubscription<({Map<String, dynamic>? database, bool hasPendingWrites})>?
+  _remoteDatabaseSubscription;
   StreamSubscription<Position>? _locationPositionSubscription;
   String _currentUserId;
   bool _isHydratingRemoteState = false;
+  Map<String, dynamic>? _pendingLocalDatabase;
 
   List<UserEntity> get _users => _database.users;
   List<HelpRequestEntity> get _requests => _database.requests;
@@ -1971,9 +1973,14 @@ class GhmeraAppState extends ChangeNotifier {
       return;
     }
 
+    final localDatabase = _database.toMap(
+      currentUserEmail: _resolvedCurrentUserEmail,
+    );
+    _pendingLocalDatabase = localDatabase;
+
     unawaited(
       _appFirestoreSyncService.syncDatabase(
-        database: _database.toMap(currentUserEmail: _resolvedCurrentUserEmail),
+        database: localDatabase,
         users: _users,
         currentUserId: _currentUserId,
       ),
@@ -1985,12 +1992,16 @@ class GhmeraAppState extends ChangeNotifier {
     _remoteDatabaseSubscription = _appFirestoreSyncService
         .watchDatabase()
         .listen(
-          (rawDatabase) {
+          (remoteDatabase) {
+            final rawDatabase = remoteDatabase.database;
             if (rawDatabase == null) {
               return;
             }
 
-            _applyRemoteDatabase(rawDatabase);
+            _applyRemoteDatabase(
+              rawDatabase,
+              hasPendingWrites: remoteDatabase.hasPendingWrites,
+            );
           },
           onError: (Object error, StackTrace stackTrace) {
             debugPrint('Failed to watch Firestore app state: $error');
@@ -1999,11 +2010,32 @@ class GhmeraAppState extends ChangeNotifier {
         );
   }
 
-  void _applyRemoteDatabase(Map<String, dynamic> rawDatabase) {
+  void _applyRemoteDatabase(
+    Map<String, dynamic> rawDatabase, {
+    required bool hasPendingWrites,
+  }) {
     final localDatabase = _database.toMap(
       currentUserEmail: _resolvedCurrentUserEmail,
     );
     if (_deepEquals(localDatabase, rawDatabase)) {
+      if (_pendingLocalDatabase != null &&
+          _deepEquals(_pendingLocalDatabase, rawDatabase) &&
+          !hasPendingWrites) {
+        _pendingLocalDatabase = null;
+      }
+      return;
+    }
+
+    if (_pendingLocalDatabase != null) {
+      if (_deepEquals(_pendingLocalDatabase, rawDatabase)) {
+        if (!hasPendingWrites) {
+          _pendingLocalDatabase = null;
+        }
+      }
+      return;
+    }
+
+    if (hasPendingWrites) {
       return;
     }
 

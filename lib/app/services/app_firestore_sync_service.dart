@@ -59,7 +59,8 @@ class AppFirestoreSyncService {
     }
   }
 
-  Stream<Map<String, dynamic>?> watchDatabase() async* {
+  Stream<({Map<String, dynamic>? database, bool hasPendingWrites})>
+  watchDatabase() async* {
     if (Firebase.apps.isEmpty) {
       return;
     }
@@ -79,37 +80,46 @@ class AppFirestoreSyncService {
             if (appStateSnapshot.exists) {
               final rawDatabase = appStateSnapshot.data()?['database'];
               if (rawDatabase is Map) {
-                return _normalizeMap(rawDatabase);
+                return (
+                  database: _normalizeMap(rawDatabase),
+                  hasPendingWrites: appStateSnapshot.metadata.hasPendingWrites,
+                );
               }
             }
 
-            return _loadFallbackDatabase(
-              trackerRef: trackerRef,
-              authEmail: trackerIdentity.authEmail,
+            return (
+              database: await _loadFallbackDatabase(
+                trackerRef: trackerRef,
+                authEmail: trackerIdentity.authEmail,
+              ),
+              hasPendingWrites: appStateSnapshot.metadata.hasPendingWrites,
             );
           } catch (error, stackTrace) {
             debugPrint('Firestore app-state watch failed: $error');
             if (kDebugMode) {
               debugPrintStack(stackTrace: stackTrace);
             }
-            return null;
+            return (
+              database: null,
+              hasPendingWrites: appStateSnapshot.metadata.hasPendingWrites,
+            );
           }
         });
   }
 
-  Future<void> syncDatabase({
+  Future<bool> syncDatabase({
     required Map<String, dynamic> database,
     required List<UserEntity> users,
     required String currentUserId,
   }) async {
     if (users.isEmpty || Firebase.apps.isEmpty) {
-      return;
+      return false;
     }
 
     try {
       final trackerIdentity = await _resolveTrackerIdentity();
       if (trackerIdentity == null) {
-        return;
+        return false;
       }
 
       final trackerRef = _trackerRef(trackerIdentity.docId);
@@ -121,7 +131,7 @@ class AppFirestoreSyncService {
         }
       }
       if (currentUser == null) {
-        return;
+        return false;
       }
 
       final existingUsersSnapshot = await trackerRef
@@ -175,11 +185,13 @@ class AppFirestoreSyncService {
       }
 
       await batch.commit();
+      return true;
     } catch (error, stackTrace) {
       debugPrint('Firestore app-state sync failed: $error');
       if (kDebugMode) {
         debugPrintStack(stackTrace: stackTrace);
       }
+      return false;
     }
   }
 
