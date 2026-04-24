@@ -75,6 +75,20 @@ class AppFirestoreSyncService {
       }
 
       final trackerRef = _trackerRef(trackerIdentity.docId);
+      UserEntity? currentUser;
+      for (final user in users) {
+        if (user.id == currentUserId) {
+          currentUser = user;
+          break;
+        }
+      }
+      if (currentUser == null) {
+        return;
+      }
+
+      final existingUsersSnapshot = await trackerRef
+          .collection(_usersSubcollection)
+          .get();
       final batch = _firestore.batch();
 
       batch.set(trackerRef, <String, dynamic>{
@@ -83,7 +97,7 @@ class AppFirestoreSyncService {
         'authEmail': trackerIdentity.authEmail,
         'deviceUuid': trackerIdentity.deviceUuid,
         'currentUserId': currentUserId,
-        'userCount': users.length,
+        'userCount': 1,
         'lastSyncedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
@@ -98,19 +112,28 @@ class AppFirestoreSyncService {
         SetOptions(merge: true),
       );
 
-      for (final user in users) {
-        batch.set(
-          trackerRef.collection(_usersSubcollection).doc(user.id),
-          <String, dynamic>{
-            ..._serializeUser(user),
-            'trackedBy': <String, dynamic>{
-              'type': trackerIdentity.type,
-              'id': trackerIdentity.id,
-            },
-            'lastSyncedAt': FieldValue.serverTimestamp(),
+      final userBucket = _userBucketFromDatabase(database, currentUser);
+      batch.set(
+        trackerRef.collection(_usersSubcollection).doc(currentUser.id),
+        <String, dynamic>{
+          ..._serializeUser(currentUser),
+          'requests': _serializedList(userBucket['requests']),
+          'notifications': _serializedList(userBucket['notifications']),
+          'moodCheckIns': _serializedList(userBucket['moodCheckIns']),
+          'trackedBy': <String, dynamic>{
+            'type': trackerIdentity.type,
+            'id': trackerIdentity.id,
           },
-          SetOptions(merge: true),
-        );
+          'lastSyncedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      for (final userDoc in existingUsersSnapshot.docs) {
+        if (userDoc.id == currentUser.id) {
+          continue;
+        }
+        batch.delete(userDoc.reference);
       }
 
       await batch.commit();
@@ -148,13 +171,23 @@ class AppFirestoreSyncService {
 
     for (final userDoc in usersSnapshot.docs) {
       final userData = _normalizeMap(userDoc.data());
+      final userRequests = userData['requests'];
+      final userNotifications = userData['notifications'];
+      final userMoodCheckIns = userData['moodCheckIns'];
+      userData.remove('requests');
+      userData.remove('notifications');
+      userData.remove('moodCheckIns');
       final email = (userData['email'] as String?)?.trim().toLowerCase();
       final bucketKey = email != null && email.isNotEmpty ? email : userDoc.id;
       rawDatabase[bucketKey] = <String, dynamic>{
         'user': userData,
-        'requests': const <Object?>[],
-        'notifications': const <Object?>[],
-        'moodCheckIns': const <Object?>[],
+        'requests': userRequests is List ? userRequests : const <Object?>[],
+        'notifications': userNotifications is List
+            ? userNotifications
+            : const <Object?>[],
+        'moodCheckIns': userMoodCheckIns is List
+            ? userMoodCheckIns
+            : const <Object?>[],
       };
     }
 
@@ -245,6 +278,8 @@ class AppFirestoreSyncService {
       'receivedHelpCount': user.receivedHelpCount,
       'blockedUserIds': List<String>.from(user.blockedUserIds),
       'mutedUserIds': List<String>.from(user.mutedUserIds),
+      'hiddenRequestIds': List<String>.from(user.hiddenRequestIds),
+      'usesDeviceLocation': user.usesDeviceLocation,
       'privacySettings': _serializePrivacySettings(user.privacySettings),
       'twoFactorEnabled': user.twoFactorEnabled,
       'isAdmin': user.isAdmin,
@@ -273,6 +308,28 @@ class AppFirestoreSyncService {
       'lastActive': session.lastActive.toIso8601String(),
       'isCurrent': session.isCurrent,
     };
+  }
+
+  Map<String, dynamic> _userBucketFromDatabase(
+    Map<String, dynamic> database,
+    UserEntity user,
+  ) {
+    final email = user.email.trim().toLowerCase();
+    final bucketKey = email.isNotEmpty ? email : user.id;
+    final rawBucket = database[bucketKey];
+    if (rawBucket is Map) {
+      return _normalizeMap(rawBucket);
+    }
+
+    return const <String, dynamic>{};
+  }
+
+  List<Object?> _serializedList(Object? rawValue) {
+    if (rawValue is List) {
+      return List<Object?>.from(rawValue);
+    }
+
+    return const <Object?>[];
   }
 }
 

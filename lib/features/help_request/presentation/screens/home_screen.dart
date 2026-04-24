@@ -8,6 +8,10 @@ import 'home_menu_screen.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
 import 'create_request_screen.dart';
 
+enum _CommunityRequestMenuAction { removeFromView, reportAccount, blockAccount }
+
+enum _MyRequestMenuAction { hideThisRequest, deleteThisRequest }
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -40,11 +44,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final pages = <Widget>[
       _OverviewTab(
         onReviewOpportunity: _showRequestDetailsSheet,
+        onRequestLongPress: _showCommunityRequestActions,
         onOpenProfile: () => _selectTab(4),
       ),
       _RequestsTab(
         onCreateRequest: _openStandardRequest,
         onEditRequest: _editRequest,
+        onLongPressMyRequest: _showMyRequestActions,
         onReviewAcceptedRequest: _showRequestDetailsSheet,
       ),
       _MessagesTab(onOpenThread: _showThreadSheet),
@@ -66,39 +72,73 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 4),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                IconButton(
-                  tooltip: 'Notifications',
-                  onPressed: _showNotificationsSheet,
-                  icon: const Icon(Icons.notifications_none_rounded),
-                ),
-                if (appState.unreadNotificationsCount > 0)
-                  Positioned(
-                    right: 8,
-                    top: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
+            child: _currentIndex == 1
+                ? Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      IconButton(
+                        tooltip: 'Hidden requests',
+                        onPressed: _showHiddenRequestsScreen,
+                        icon: const Icon(Icons.visibility_off_outlined),
                       ),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.tertiary,
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: Text(
-                        '${appState.unreadNotificationsCount}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                      if (appState.hiddenMyRequestsCount > 0)
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.tertiary,
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: Text(
+                              '${appState.hiddenMyRequestsCount}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
                         ),
+                    ],
+                  )
+                : Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      IconButton(
+                        tooltip: 'Notifications',
+                        onPressed: _showNotificationsSheet,
+                        icon: const Icon(Icons.notifications_none_rounded),
                       ),
-                    ),
+                      if (appState.unreadNotificationsCount > 0)
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.tertiary,
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: Text(
+                              '${appState.unreadNotificationsCount}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-              ],
-            ),
           ),
           if (_currentIndex == 0)
             IconButton(
@@ -208,8 +248,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showNotificationsSheet() {
+    context.read<GhmeraAppState>().markCurrentNotificationsRead();
     return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (_) => const _NotificationsScreen()),
+    );
+  }
+
+  Future<void> _showHiddenRequestsScreen() {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => _HiddenRequestsScreen(
+          onEditRequest: _editRequest,
+          onReviewAcceptedRequest: _showRequestDetailsSheet,
+        ),
+      ),
     );
   }
 
@@ -236,6 +288,246 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _showCommunityRequestActions(HelpRequestEntity request) async {
+    final appState = context.read<GhmeraAppState>();
+    final requester = appState.userById(request.requesterId);
+    final selectedAction =
+        await showModalBottomSheet<_CommunityRequestMenuAction>(
+          context: context,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+          ),
+          builder: (sheetContext) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                      child: Text(
+                        request.title,
+                        style: Theme.of(sheetContext).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                      child: Text(
+                        'Actions for ${requester.fullName}',
+                        style: Theme.of(sheetContext).textTheme.bodyMedium
+                            ?.copyWith(color: const Color(0xFF61726F)),
+                      ),
+                    ),
+                    _MenuSheetActionTile(
+                      icon: Icons.visibility_off_outlined,
+                      label: 'Remove from view',
+                      onTap: () => Navigator.of(
+                        sheetContext,
+                      ).pop(_CommunityRequestMenuAction.removeFromView),
+                    ),
+                    _MenuSheetActionTile(
+                      icon: Icons.report_outlined,
+                      label: 'Report account',
+                      onTap: () => Navigator.of(
+                        sheetContext,
+                      ).pop(_CommunityRequestMenuAction.reportAccount),
+                    ),
+                    _MenuSheetActionTile(
+                      icon: Icons.block_outlined,
+                      label: 'Block account',
+                      foregroundColor: const Color(0xFF9A2F2F),
+                      onTap: () => Navigator.of(
+                        sheetContext,
+                      ).pop(_CommunityRequestMenuAction.blockAccount),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+
+    if (!mounted || selectedAction == null) {
+      return;
+    }
+
+    switch (selectedAction) {
+      case _CommunityRequestMenuAction.removeFromView:
+        final hidden = appState.hideRequestFromCurrentUser(request.id);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              hidden
+                  ? 'Request removed from your view.'
+                  : 'This request is already hidden.',
+            ),
+          ),
+        );
+        return;
+      case _CommunityRequestMenuAction.reportAccount:
+        await _showAccountReportSheet(
+          reportedUser: requester,
+          request: request,
+        );
+        return;
+      case _CommunityRequestMenuAction.blockAccount:
+        final blocked = appState.blockUserAccount(
+          requester.id,
+          requestId: request.id,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              blocked
+                  ? 'Account blocked and request removed from your view.'
+                  : 'This account is already blocked.',
+            ),
+          ),
+        );
+        return;
+    }
+  }
+
+  Future<void> _showMyRequestActions(HelpRequestEntity request) async {
+    final selectedAction = await showModalBottomSheet<_MyRequestMenuAction>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                  child: Text(
+                    request.title,
+                    style: Theme.of(sheetContext).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  child: Text(
+                    'Request actions',
+                    style: Theme.of(sheetContext).textTheme.bodyMedium
+                        ?.copyWith(color: const Color(0xFF61726F)),
+                  ),
+                ),
+                _MenuSheetActionTile(
+                  icon: Icons.visibility_off_outlined,
+                  label: 'Hide this request',
+                  onTap: () => Navigator.of(
+                    sheetContext,
+                  ).pop(_MyRequestMenuAction.hideThisRequest),
+                ),
+                _MenuSheetActionTile(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Delete this request',
+                  foregroundColor: const Color(0xFF9A2F2F),
+                  onTap: () => Navigator.of(
+                    sheetContext,
+                  ).pop(_MyRequestMenuAction.deleteThisRequest),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || selectedAction == null) {
+      return;
+    }
+
+    final appState = context.read<GhmeraAppState>();
+    switch (selectedAction) {
+      case _MyRequestMenuAction.hideThisRequest:
+        final hidden = appState.hideRequestFromCurrentUser(request.id);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              hidden
+                  ? 'Request hidden from your requests.'
+                  : 'This request is already hidden.',
+            ),
+          ),
+        );
+        return;
+      case _MyRequestMenuAction.deleteThisRequest:
+        final shouldDelete = await _confirmDeleteRequest(request);
+        if (!mounted || !shouldDelete) {
+          return;
+        }
+
+        final deleted = appState.deleteMyHelpRequest(request.id);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              deleted
+                  ? 'Request deleted.'
+                  : 'This request could not be deleted.',
+            ),
+          ),
+        );
+        return;
+    }
+  }
+
+  Future<bool> _confirmDeleteRequest(HelpRequestEntity request) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete request'),
+        content: Text(
+          'Delete ${request.title}? This only works for requests that have not been accepted yet.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    return shouldDelete == true;
+  }
+
+  Future<void> _showAccountReportSheet({
+    required UserEntity reportedUser,
+    HelpRequestEntity? request,
+  }) async {
+    final submitted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+      ),
+      builder: (_) =>
+          _AccountReportSheet(reportedUser: reportedUser, request: request),
+    );
+
+    if (submitted == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Account report submitted to moderators.'),
+        ),
+      );
+    }
   }
 }
 
@@ -1105,6 +1397,134 @@ class _ReviewSubmissionSheetState extends State<_ReviewSubmissionSheet> {
   }
 }
 
+class _AccountReportSheet extends StatefulWidget {
+  const _AccountReportSheet({required this.reportedUser, this.request});
+
+  final UserEntity reportedUser;
+  final HelpRequestEntity? request;
+
+  @override
+  State<_AccountReportSheet> createState() => _AccountReportSheetState();
+}
+
+class _AccountReportSheetState extends State<_AccountReportSheet> {
+  static const List<String> _reasons = <String>[
+    'Safety concern',
+    'Harassment',
+    'Spam',
+    'Fraud or deception',
+    'Suspicious behavior',
+    'Other',
+  ];
+
+  late final TextEditingController _detailsController;
+  String _selectedReason = _reasons.first;
+
+  @override
+  void initState() {
+    super.initState();
+    _detailsController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _detailsController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomInset + 16),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Report ${widget.reportedUser.fullName}',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.request == null
+                  ? 'This sends an account report to moderators.'
+                  : 'This sends an account report linked to ${widget.request!.title}.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF61726F),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedReason,
+              decoration: const InputDecoration(labelText: 'Reason'),
+              items: _reasons
+                  .map(
+                    (reason) => DropdownMenuItem<String>(
+                      value: reason,
+                      child: Text(reason),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) {
+                  return;
+                }
+                setState(() => _selectedReason = value);
+              },
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _detailsController,
+              minLines: 3,
+              maxLines: 5,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Details',
+                hintText:
+                    'Describe what happened and what moderators should review.',
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  final report = context
+                      .read<GhmeraAppState>()
+                      .reportUserAccount(
+                        userId: widget.reportedUser.id,
+                        reason: _selectedReason,
+                        details: _detailsController.text,
+                        requestId: widget.request?.id,
+                      );
+                  if (report == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Account report could not be submitted.'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  Navigator.of(context).pop(true);
+                },
+                icon: const Icon(Icons.report_outlined),
+                label: const Text('Submit account report'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SafetyReportSheet extends StatefulWidget {
   const _SafetyReportSheet({required this.request, required this.reportedUser});
 
@@ -1319,10 +1739,12 @@ class _NotificationsScreen extends StatelessWidget {
 class _OverviewTab extends StatelessWidget {
   const _OverviewTab({
     required this.onReviewOpportunity,
+    required this.onRequestLongPress,
     required this.onOpenProfile,
   });
 
   final ValueChanged<HelpRequestEntity> onReviewOpportunity;
+  final ValueChanged<HelpRequestEntity> onRequestLongPress;
   final VoidCallback onOpenProfile;
 
   @override
@@ -1481,6 +1903,7 @@ class _OverviewTab extends StatelessWidget {
           for (final request in acceptedRequests)
             _OpportunityCard(
               request: request,
+              onLongPress: onRequestLongPress,
               onReviewRequest: onReviewOpportunity,
             ),
         if (acceptedRequests.isEmpty)
@@ -1514,6 +1937,7 @@ class _OverviewTab extends StatelessWidget {
           for (final request in pendingHelpRequests)
             _OpportunityCard(
               request: request,
+              onLongPress: onRequestLongPress,
               onReviewRequest: onReviewOpportunity,
             ),
       ],
@@ -1525,11 +1949,13 @@ class _RequestsTab extends StatelessWidget {
   const _RequestsTab({
     required this.onCreateRequest,
     required this.onEditRequest,
+    required this.onLongPressMyRequest,
     required this.onReviewAcceptedRequest,
   });
 
   final VoidCallback onCreateRequest;
   final ValueChanged<HelpRequestEntity> onEditRequest;
+  final ValueChanged<HelpRequestEntity> onLongPressMyRequest;
   final ValueChanged<HelpRequestEntity> onReviewAcceptedRequest;
 
   @override
@@ -1584,6 +2010,7 @@ class _RequestsTab extends StatelessWidget {
                 for (final request in editableRequests)
                   _MyRequestTile(
                     request: request,
+                    onLongPress: () => onLongPressMyRequest(request),
                     onTap: () => onEditRequest(request),
                   ),
             ],
@@ -1610,6 +2037,88 @@ class _RequestsTab extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _HiddenRequestsScreen extends StatelessWidget {
+  const _HiddenRequestsScreen({
+    required this.onEditRequest,
+    required this.onReviewAcceptedRequest,
+  });
+
+  final Future<void> Function(HelpRequestEntity request) onEditRequest;
+  final ValueChanged<HelpRequestEntity> onReviewAcceptedRequest;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        centerTitle: false,
+        leading: uniformBackButton(context),
+        title: uniformAppBarTitle(
+          context,
+          title: 'Hidden requests',
+          subtitle: 'Requests you hid from the main requests list.',
+        ),
+      ),
+      body: SafeArea(
+        child: Consumer<GhmeraAppState>(
+          builder: (context, appState, _) {
+            final hiddenRequests = appState.hiddenMyRequests;
+
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 28),
+              children: [
+                Text(
+                  'Hidden requests stay here until you restore them. Tap a request to open it, or use the restore button to bring it back to your requests screen.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF61726F),
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                if (hiddenRequests.isEmpty)
+                  const _EmptyStateCard(
+                    title: 'No hidden requests',
+                    message:
+                        'Requests you hide from your created list will appear here.',
+                  )
+                else
+                  for (final request in hiddenRequests)
+                    _HiddenRequestTile(
+                      request: request,
+                      onTap: () async {
+                        if (request.acceptedHelperId != null) {
+                          onReviewAcceptedRequest(request);
+                          return;
+                        }
+
+                        await onEditRequest(request);
+                      },
+                      onRestore: () {
+                        final restored = context
+                            .read<GhmeraAppState>()
+                            .unhideRequestForCurrentUser(request.id);
+                        if (!restored) {
+                          return;
+                        }
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '${request.title} restored to your requests.',
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }
@@ -2183,10 +2692,15 @@ class _RequestCard extends StatelessWidget {
 }
 
 class _MyRequestTile extends StatelessWidget {
-  const _MyRequestTile({required this.request, required this.onTap});
+  const _MyRequestTile({
+    required this.request,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   final HelpRequestEntity request;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -2206,6 +2720,7 @@ class _MyRequestTile extends StatelessWidget {
       ),
       child: ListTile(
         onTap: onTap,
+        onLongPress: onLongPress,
         minVerticalPadding: 0,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14),
         leading: Container(
@@ -2314,13 +2829,81 @@ class _AcceptedMyRequestTile extends StatelessWidget {
   }
 }
 
+class _HiddenRequestTile extends StatelessWidget {
+  const _HiddenRequestTile({
+    required this.request,
+    required this.onTap,
+    required this.onRestore,
+  });
+
+  final HelpRequestEntity request;
+  final VoidCallback onTap;
+  final VoidCallback onRestore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(5),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x10000000),
+            blurRadius: 20,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ListTile(
+        onTap: onTap,
+        minVerticalPadding: 0,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1EADF),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: const Icon(Icons.visibility_off_outlined),
+        ),
+        title: Text(
+          request.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          '${request.category.label} • ${request.status.label}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF61726F)),
+        ),
+        trailing: IconButton(
+          tooltip: 'Restore request',
+          onPressed: onRestore,
+          icon: const Icon(Icons.visibility_outlined),
+        ),
+      ),
+    );
+  }
+}
+
 class _OpportunityCard extends StatelessWidget {
   const _OpportunityCard({
     required this.request,
+    required this.onLongPress,
     required this.onReviewRequest,
   });
 
   final HelpRequestEntity request;
+  final ValueChanged<HelpRequestEntity> onLongPress;
   final ValueChanged<HelpRequestEntity> onReviewRequest;
 
   @override
@@ -2346,6 +2929,7 @@ class _OpportunityCard extends StatelessWidget {
         children: [
           ListTile(
             onTap: () => onReviewRequest(request),
+            onLongPress: () => onLongPress(request),
             minVerticalPadding: 0,
             contentPadding: const EdgeInsets.only(
               left: 4,
@@ -2672,6 +3256,38 @@ class _NotificationCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuSheetActionTile extends StatelessWidget {
+  const _MenuSheetActionTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.foregroundColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = foregroundColor ?? const Color(0xFF103B36);
+
+    return ListTile(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+      onTap: onTap,
+      leading: Icon(icon, color: color),
+      title: Text(
+        label,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: color,
         ),
       ),
     );

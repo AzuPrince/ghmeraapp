@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/models/ghmera_models.dart';
@@ -12,97 +10,12 @@ import '../widgets/privacy_session_controls_card.dart';
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
-  Future<void> _fillLocationFromDevice(
-    BuildContext context, {
-    required TextEditingController cityController,
-    required TextEditingController areaController,
-  }) async {
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Enable location services to read device location.',
-              ),
-            ),
-          );
-        }
-        return;
-      }
-
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Location permission is required to read your location.',
-              ),
-            ),
-          );
-        }
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      final placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-
-      final placemark = placemarks.isNotEmpty ? placemarks.first : null;
-      final city = (placemark?.locality?.trim().isNotEmpty ?? false)
-          ? placemark!.locality!.trim()
-          : (placemark?.administrativeArea?.trim() ?? '');
-      final areaCandidates = <String>[
-        placemark?.subLocality ?? '',
-        placemark?.street ?? '',
-        placemark?.name ?? '',
-      ].where((value) => value.trim().isNotEmpty).toList();
-      final area = areaCandidates.isNotEmpty ? areaCandidates.first.trim() : '';
-
-      cityController.text = city.isNotEmpty
-          ? city
-          : '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
-      areaController.text = area;
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Device location loaded.')),
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Unable to read device location right now.'),
-          ),
-        );
-      }
-    }
-  }
-
   Future<void> _openEditProfileScreen(
     BuildContext context,
     UserEntity user,
   ) async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => _EditProfileScreen(
-          user: user,
-          onFillLocationFromDevice: _fillLocationFromDevice,
-        ),
-      ),
+      MaterialPageRoute<void>(builder: (_) => _EditProfileScreen(user: user)),
     );
   }
 
@@ -564,21 +477,10 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-typedef _FillLocationFromDevice =
-    Future<void> Function(
-      BuildContext context, {
-      required TextEditingController cityController,
-      required TextEditingController areaController,
-    });
-
 class _EditProfileScreen extends StatefulWidget {
-  const _EditProfileScreen({
-    required this.user,
-    required this.onFillLocationFromDevice,
-  });
+  const _EditProfileScreen({required this.user});
 
   final UserEntity user;
-  final _FillLocationFromDevice onFillLocationFromDevice;
 
   @override
   State<_EditProfileScreen> createState() => _EditProfileScreenState();
@@ -593,6 +495,12 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
   late final TextEditingController _areaController;
   late final TextEditingController _phoneController;
   late final TextEditingController _photoController;
+  bool? _usesDeviceLocationOverride;
+  bool _applyingDeviceLocation = false;
+
+  bool get _usesDeviceLocation {
+    return _usesDeviceLocationOverride ?? widget.user.usesDeviceLocation;
+  }
 
   @override
   void initState() {
@@ -605,6 +513,8 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
     _photoController = TextEditingController(
       text: widget.user.profilePhoto ?? '',
     );
+    _cityController.addListener(_handleManualLocationEdit);
+    _areaController.addListener(_handleManualLocationEdit);
   }
 
   @override
@@ -630,9 +540,64 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
       area: _areaController.text,
       phone: _phoneController.text,
       profilePhoto: _photoController.text,
+      usesDeviceLocation: _usesDeviceLocationOverride,
     );
 
     Navigator.of(context).pop();
+  }
+
+  void _handleManualLocationEdit() {
+    if (_applyingDeviceLocation) {
+      return;
+    }
+
+    _usesDeviceLocationOverride = false;
+  }
+
+  Future<void> _setUsesDeviceLocation(bool value) async {
+    setState(() {
+      _usesDeviceLocationOverride = value;
+    });
+
+    if (value) {
+      await _useDeviceLocation();
+    }
+  }
+
+  Future<void> _useDeviceLocation() async {
+    setState(() {
+      _applyingDeviceLocation = true;
+    });
+
+    final resolvedLocation = await context
+        .read<GhmeraAppState>()
+        .refreshCurrentUserLocationFromDevice();
+
+    if (!mounted) {
+      return;
+    }
+
+    if (resolvedLocation == null) {
+      setState(() {
+        _applyingDeviceLocation = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to read device location right now.'),
+        ),
+      );
+      return;
+    }
+
+    _cityController.text = resolvedLocation.city;
+    _areaController.text = resolvedLocation.area;
+    setState(() {
+      _usesDeviceLocationOverride = true;
+      _applyingDeviceLocation = false;
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Device location loaded.')));
   }
 
   @override
@@ -662,28 +627,42 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
                 maxLines: 2,
               ),
               const SizedBox(height: 10),
-              TextFormField(
-                controller: _cityController,
-                decoration: const InputDecoration(labelText: 'City'),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: _usesDeviceLocation,
+                onChanged: _setUsesDeviceLocation,
+                title: const Text('Always use my location'),
+                subtitle: Text(
+                  _usesDeviceLocation
+                      ? 'Your road, town, state, and country will keep following your device location.'
+                      : 'Turn this off to enter a custom road, town, state, and country manually.',
+                ),
               ),
               const SizedBox(height: 10),
               TextFormField(
                 controller: _areaController,
-                decoration: const InputDecoration(labelText: 'Area'),
+                enabled: !_usesDeviceLocation,
+                decoration: const InputDecoration(labelText: 'Road'),
               ),
               const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: () => widget.onFillLocationFromDevice(
-                    context,
-                    cityController: _cityController,
-                    areaController: _areaController,
-                  ),
-                  icon: const Icon(Icons.my_location_rounded),
-                  label: const Text('Use device location'),
+              TextFormField(
+                controller: _cityController,
+                enabled: !_usesDeviceLocation,
+                decoration: const InputDecoration(
+                  labelText: 'Town, state, country',
                 ),
               ),
+              if (_usesDeviceLocation) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _useDeviceLocation,
+                    icon: const Icon(Icons.my_location_rounded),
+                    label: const Text('Refresh device location'),
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               TextFormField(
                 controller: _phoneController,
@@ -865,12 +844,14 @@ class _ProfileAvatar extends StatelessWidget {
             ? Image.network(
                 photoPath,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _fallbackAvatar(initials, size),
+                errorBuilder: (context, error, stackTrace) =>
+                    _fallbackAvatar(initials, size),
               )
             : Image.asset(
                 photoPath,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _fallbackAvatar(initials, size),
+                errorBuilder: (context, error, stackTrace) =>
+                    _fallbackAvatar(initials, size),
               ),
       ),
     );

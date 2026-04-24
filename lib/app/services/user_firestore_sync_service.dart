@@ -122,6 +122,8 @@ class UserFirestoreSyncService {
       'receivedHelpCount': user.receivedHelpCount,
       'blockedUserIds': List<String>.from(user.blockedUserIds),
       'mutedUserIds': List<String>.from(user.mutedUserIds),
+      'hiddenRequestIds': List<String>.from(user.hiddenRequestIds),
+      'usesDeviceLocation': user.usesDeviceLocation,
       'privacySettings': _serializePrivacySettings(user.privacySettings),
       'twoFactorEnabled': user.twoFactorEnabled,
       'isAdmin': user.isAdmin,

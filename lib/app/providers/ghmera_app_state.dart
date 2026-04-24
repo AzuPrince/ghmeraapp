@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../database/database.dart';
 import '../models/ghmera_models.dart';
@@ -35,6 +37,14 @@ class GhmeraAppState extends ChangeNotifier {
   static const String _defaultCurrentUserId = 'user_current';
   static const int _matchSuggestionLimit = 3;
   static const int reciprocityFloor = -5;
+  static const Set<String> _legacyDemoUserIds = <String>{
+    _defaultCurrentUserId,
+    'user_ama',
+    'user_daniel',
+    'user_kofi',
+    'user_nana',
+    'user_zainab',
+  };
   static const Set<HelpRequestStatus> _reciprocityTrackedRequestStatuses =
       <HelpRequestStatus>{
         HelpRequestStatus.accepted,
@@ -48,6 +58,7 @@ class GhmeraAppState extends ChangeNotifier {
   final RequestMatchingEngine _requestMatchingEngine =
       const RequestMatchingEngine();
   StreamSubscription<User?>? _authStateSubscription;
+  StreamSubscription<Position>? _locationPositionSubscription;
   String _currentUserId;
   bool _isHydratingRemoteState = false;
 
@@ -68,10 +79,39 @@ class GhmeraAppState extends ChangeNotifier {
 
   List<UserEntity> get users => List<UserEntity>.unmodifiable(_users);
 
+  bool _isRequestHiddenForCurrentUser(String requestId) {
+    return currentUser.hiddenRequestIds.contains(requestId);
+  }
+
+  bool _shouldShowCommunityRequest(HelpRequestEntity request) {
+    return request.requesterId != _currentUserId &&
+        !_isRequestHiddenForCurrentUser(request.id) &&
+        !currentUser.blockedUserIds.contains(request.requesterId);
+  }
+
   List<HelpRequestEntity> get myRequests {
     final requests =
         _requests
-            .where((request) => request.requesterId == _currentUserId)
+            .where(
+              (request) =>
+                  request.requesterId == _currentUserId &&
+                  !_isRequestHiddenForCurrentUser(request.id),
+            )
+            .toList()
+          ..sort(
+            (first, second) => second.createdAt.compareTo(first.createdAt),
+          );
+    return requests;
+  }
+
+  List<HelpRequestEntity> get hiddenMyRequests {
+    final requests =
+        _requests
+            .where(
+              (request) =>
+                  request.requesterId == _currentUserId &&
+                  _isRequestHiddenForCurrentUser(request.id),
+            )
             .toList()
           ..sort(
             (first, second) => second.createdAt.compareTo(first.createdAt),
@@ -80,18 +120,15 @@ class GhmeraAppState extends ChangeNotifier {
   }
 
   List<HelpRequestEntity> get communityRequests {
-    final requests =
-        _requests
-            .where((request) => request.requesterId != _currentUserId)
-            .toList()
-          ..sort(_compareRequests);
+    final requests = _requests.where(_shouldShowCommunityRequest).toList()
+      ..sort(_compareRequests);
     return requests;
   }
 
   List<HelpRequestEntity> get requestsNeedingMyHelp {
     final rankedRequests =
         _requests
-            .where((request) => request.requesterId != _currentUserId)
+            .where(_shouldShowCommunityRequest)
             .map((request) {
               final requester = _findUserById(request.requesterId);
               if (requester == null) {
@@ -252,6 +289,8 @@ class GhmeraAppState extends ChangeNotifier {
 
   int get unreadNotificationsCount =>
       currentNotifications.where((notification) => !notification.isRead).length;
+
+  int get hiddenMyRequestsCount => hiddenMyRequests.length;
 
   List<ReportEntity> get reportsAboutCurrentUser {
     final reports =
@@ -557,6 +596,7 @@ class GhmeraAppState extends ChangeNotifier {
     required String area,
     String? phone,
     String? profilePhoto,
+    bool? usesDeviceLocation,
   }) {
     final trimmedName = fullName.trim();
     if (trimmedName.isEmpty) {
@@ -584,12 +624,63 @@ class GhmeraAppState extends ChangeNotifier {
       profilePhoto: trimmedPhoto != null && trimmedPhoto.isNotEmpty
           ? trimmedPhoto
           : currentUser.profilePhoto,
+      usesDeviceLocation: usesDeviceLocation ?? currentUser.usesDeviceLocation,
       verificationBadges: badges,
     );
 
     _replaceUser(updatedUser);
     _syncCurrentUserToAuthProfile(updatedUser);
+    unawaited(
+      _syncLocationTrackingState(
+        requestPermissionIfNeeded: updatedUser.usesDeviceLocation,
+      ),
+    );
     notifyListeners();
+  }
+
+  Future<({String city, String area})?> refreshCurrentUserLocationFromDevice({
+    bool enableAutoUpdate = true,
+    bool requestPermissionIfNeeded = true,
+  }) async {
+    if (_findUserById(_currentUserId) == null) {
+      return null;
+    }
+
+    final hasLocationAccess = await _ensureLocationAccess(
+      requestPermissionIfNeeded: requestPermissionIfNeeded,
+    );
+    if (!hasLocationAccess) {
+      if (!enableAutoUpdate) {
+        await _stopLocationTracking();
+      }
+      return null;
+    }
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      final resolvedLocation = await _resolveLocationFromPosition(position);
+      if (resolvedLocation == null) {
+        return null;
+      }
+
+      _applyCurrentUserDeviceLocation(
+        city: resolvedLocation.city,
+        area: resolvedLocation.area,
+        enableAutoUpdate: enableAutoUpdate,
+      );
+
+      if (enableAutoUpdate) {
+        await _ensureLocationTracking(requestPermissionIfNeeded: false);
+      } else {
+        await _stopLocationTracking();
+      }
+
+      return resolvedLocation;
+    } catch (_) {
+      return null;
+    }
   }
 
   void toggleCurrentUserProvidedCategory(RequestCategory category) {
@@ -618,6 +709,83 @@ class GhmeraAppState extends ChangeNotifier {
 
     _replaceUser(currentUser.copyWith(helpCategoriesRequested: categories));
     notifyListeners();
+  }
+
+  bool hideRequestFromCurrentUser(String requestId) {
+    if (_isRequestHiddenForCurrentUser(requestId) ||
+        !_requests.any((request) => request.id == requestId)) {
+      return false;
+    }
+
+    final hiddenRequestIds = List<String>.from(currentUser.hiddenRequestIds)
+      ..add(requestId);
+    _replaceUser(currentUser.copyWith(hiddenRequestIds: hiddenRequestIds));
+    notifyListeners();
+    return true;
+  }
+
+  bool unhideRequestForCurrentUser(String requestId) {
+    if (!_isRequestHiddenForCurrentUser(requestId)) {
+      return false;
+    }
+
+    final hiddenRequestIds = List<String>.from(currentUser.hiddenRequestIds)
+      ..remove(requestId);
+    _replaceUser(currentUser.copyWith(hiddenRequestIds: hiddenRequestIds));
+    notifyListeners();
+    return true;
+  }
+
+  bool blockUserAccount(String userId, {String? requestId}) {
+    if (userId == _currentUserId) {
+      return false;
+    }
+
+    final blockedUser = _findUserById(userId);
+    if (blockedUser == null) {
+      return false;
+    }
+
+    final blockedUserIds = List<String>.from(currentUser.blockedUserIds);
+    final hiddenRequestIds = List<String>.from(currentUser.hiddenRequestIds);
+    var didChange = false;
+
+    if (!blockedUserIds.contains(userId)) {
+      blockedUserIds.add(userId);
+      didChange = true;
+    }
+
+    if (requestId != null &&
+        requestId.isNotEmpty &&
+        !hiddenRequestIds.contains(requestId)) {
+      hiddenRequestIds.add(requestId);
+      didChange = true;
+    }
+
+    if (!didChange) {
+      return false;
+    }
+
+    _replaceUser(
+      currentUser.copyWith(
+        blockedUserIds: blockedUserIds,
+        hiddenRequestIds: hiddenRequestIds,
+      ),
+    );
+    _notifications.insert(
+      0,
+      NotificationEntity(
+        id: 'notification_${_notifications.length + 1}',
+        userId: _currentUserId,
+        type: NotificationType.safetyAlert,
+        title: 'Account blocked',
+        message:
+            'You blocked ${blockedUser.fullName}. Their requests will no longer appear to you.',
+        createdAt: DateTime.now(),
+      ),
+    );
+    notifyListeners();
+    return true;
   }
 
   void toggleCurrentUserSupportCircleMembership(String circleId) {
@@ -744,6 +912,24 @@ class GhmeraAppState extends ChangeNotifier {
 
     _notifications[index] = _notifications[index].copyWith(isRead: true);
     notifyListeners();
+  }
+
+  void markCurrentNotificationsRead() {
+    var didChange = false;
+
+    for (var index = 0; index < _notifications.length; index++) {
+      final notification = _notifications[index];
+      if (notification.userId != _currentUserId || notification.isRead) {
+        continue;
+      }
+
+      _notifications[index] = notification.copyWith(isRead: true);
+      didChange = true;
+    }
+
+    if (didChange) {
+      notifyListeners();
+    }
   }
 
   void acceptHelpingOpportunity(String matchId) {
@@ -1542,6 +1728,139 @@ class GhmeraAppState extends ChangeNotifier {
     return updatedRequest;
   }
 
+  bool deleteMyHelpRequest(String requestId) {
+    final requestIndex = _requests.indexWhere(
+      (request) => request.id == requestId,
+    );
+    if (requestIndex == -1) {
+      return false;
+    }
+
+    final request = _requests[requestIndex];
+    if (request.requesterId != _currentUserId ||
+        request.acceptedHelperId != null) {
+      return false;
+    }
+
+    final removedMatchIds = _matches
+        .where((match) => match.requestId == requestId)
+        .map((match) => match.id)
+        .toSet();
+    final removedThreadIds = _threads
+        .where((thread) => thread.requestId == requestId)
+        .map((thread) => thread.id)
+        .toSet();
+
+    _requests.removeAt(requestIndex);
+    _matches.removeWhere((match) => match.requestId == requestId);
+    _threads.removeWhere((thread) => thread.requestId == requestId);
+    _messages.removeWhere(
+      (message) => removedThreadIds.contains(message.threadId),
+    );
+    _reviews.removeWhere((review) => removedMatchIds.contains(review.matchId));
+    _reports.removeWhere(
+      (report) =>
+          report.targetType == ReportTargetType.request &&
+          report.targetId == requestId,
+    );
+
+    final hiddenRequestIds = List<String>.from(currentUser.hiddenRequestIds)
+      ..remove(requestId);
+    _replaceUser(currentUser.copyWith(hiddenRequestIds: hiddenRequestIds));
+    _notifications.insert(
+      0,
+      NotificationEntity(
+        id: 'notification_${_notifications.length + 1}',
+        userId: _currentUserId,
+        type: NotificationType.adminUpdate,
+        title: 'Request deleted',
+        message: '${request.title} was removed from your requests.',
+        createdAt: DateTime.now(),
+      ),
+    );
+    notifyListeners();
+    return true;
+  }
+
+  ReportEntity? reportUserAccount({
+    required String userId,
+    required String reason,
+    required String details,
+    String? requestId,
+  }) {
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty || userId == _currentUserId) {
+      return null;
+    }
+
+    final reportedUser = _findUserById(userId);
+    if (reportedUser == null) {
+      return null;
+    }
+
+    HelpRequestEntity? request;
+    if (requestId != null && requestId.isNotEmpty) {
+      final requestIndex = _requests.indexWhere(
+        (candidate) => candidate.id == requestId,
+      );
+      if (requestIndex != -1) {
+        request = _requests[requestIndex];
+      }
+    }
+
+    final now = DateTime.now();
+    final trimmedDetails = details.trim();
+    final report = ReportEntity(
+      id: 'report_${_reports.length + 1}',
+      reporterId: _currentUserId,
+      targetType: ReportTargetType.user,
+      targetId: reportedUser.id,
+      reason: trimmedReason,
+      details: trimmedDetails.isEmpty
+          ? request == null
+                ? 'Reported from the account action menu.'
+                : 'Reported from request ${request.title}.'
+          : request == null
+          ? trimmedDetails
+          : 'Request ${request.title}: $trimmedDetails',
+      status: ReportStatus.open,
+      createdAt: now,
+    );
+    _reports.insert(0, report);
+
+    if (request != null) {
+      _replaceRequest(
+        request.copyWith(
+          safetyCheckInRequired: true,
+          actionLog: <HelpActionLogEntry>[
+            ...request.actionLog,
+            HelpActionLogEntry(
+              actorId: _currentUserId,
+              action:
+                  'Reported ${reportedUser.fullName} from the request action menu',
+              createdAt: now,
+            ),
+          ],
+        ),
+      );
+    }
+
+    _notifications.insert(
+      0,
+      NotificationEntity(
+        id: 'notification_${_notifications.length + 1}',
+        userId: _currentUserId,
+        type: NotificationType.safetyAlert,
+        title: 'Account report submitted',
+        message:
+            'Your report about ${reportedUser.fullName} was sent to moderators.',
+        createdAt: now,
+      ),
+    );
+    notifyListeners();
+    return report;
+  }
+
   List<HelperMatchCandidate> _rankedHelperCandidatesForRequest(
     HelpRequestEntity request, {
     required UserEntity requester,
@@ -1674,10 +1993,13 @@ class GhmeraAppState extends ChangeNotifier {
       if (authUser != null) {
         final syncedUser = _upsertCurrentUserFromAuth(authUser);
         _currentUserId = syncedUser.id;
+        _removeLegacyDemoData();
         _database.currentUserId = _currentUserId;
       } else {
         _ensureCurrentUserContext();
       }
+
+      await _syncLocationTrackingState();
     } catch (error, stackTrace) {
       debugPrint('Failed to restore Firestore app state: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -1702,6 +2024,7 @@ class GhmeraAppState extends ChangeNotifier {
         _currentUserId = syncedUser.id;
         didChange = true;
       }
+      _removeLegacyDemoData();
       _database.currentUserId = _currentUserId;
     } else {
       final previousId = _currentUserId;
@@ -1713,6 +2036,7 @@ class GhmeraAppState extends ChangeNotifier {
       return;
     }
 
+    unawaited(_syncLocationTrackingState());
     _syncDerivedUserMetrics();
 
     if (notifyListenersAfter) {
@@ -1786,7 +2110,6 @@ class GhmeraAppState extends ChangeNotifier {
         user: user,
         averageRating: averageRating,
         completedHelpCount: completedHelpCount,
-        trustFlags: trustFlags,
       );
 
       if (user.helpGivenCount == helpGivenCount &&
@@ -1856,24 +2179,45 @@ class GhmeraAppState extends ChangeNotifier {
     required UserEntity user,
     required double averageRating,
     required int completedHelpCount,
-    required List<String> trustFlags,
   }) {
     final activeSafetyReports = _activeSafetyReportCountForUser(user.id);
     final suspiciousReviews = _suspiciousReviewCountForUser(user.id);
 
-    var score = 35.0;
-    score += averageRating * 10;
+    final hasReputationActivity =
+        averageRating > 0 ||
+        completedHelpCount > 0 ||
+        user.helpGivenCount > 0 ||
+        user.helpReceivedCount > 0 ||
+        activeSafetyReports > 0 ||
+        suspiciousReviews > 0;
+    if (!hasReputationActivity) {
+      return 0;
+    }
+
+    var score = 0.0;
+    if (averageRating > 0) {
+      score += (averageRating / 5) * 55;
+    }
     score += completedHelpCount.clamp(0, 20) * 1.5;
-    score += user.helpBalance.clamp(-5, 10) * 1.2;
-    score += user.verificationBadges.length * 3.5;
-    if (user.trustedHelper) {
+    if (user.helpGivenCount > 0 || user.helpReceivedCount > 0) {
+      score += user.helpBalance.clamp(-5, 10) * 1.2;
+    }
+    if (user.emailVerified) {
+      score += 6;
+    }
+    if (user.phoneVerified) {
       score += 8;
+    }
+    if (user.idVerified) {
+      score += 10;
+    }
+    if (user.trustedHelper) {
+      score += 10;
     }
     score -= activeSafetyReports * 12;
     score -= suspiciousReviews * 8;
     score -= user.blockedUserIds.length * 1.5;
     score -= user.mutedUserIds.length * 0.5;
-    score += trustFlags.length * 0.4;
 
     return score.clamp(0, 99).toDouble();
   }
@@ -1929,6 +2273,344 @@ class GhmeraAppState extends ChangeNotifier {
     }
 
     return _users[index];
+  }
+
+  void _removeLegacyDemoData() {
+    final demoUserIds = _users
+        .map((user) => user.id)
+        .where(_legacyDemoUserIds.contains)
+        .toSet();
+    if (demoUserIds.isEmpty) {
+      return;
+    }
+
+    final removedRequestIds = <String>{};
+    final sanitizedRequests = <HelpRequestEntity>[];
+    for (final request in _requests) {
+      if (demoUserIds.contains(request.requesterId)) {
+        removedRequestIds.add(request.id);
+        continue;
+      }
+
+      final filteredSuggestedHelperIds = request.suggestedHelperIds
+          .where((helperId) => !demoUserIds.contains(helperId))
+          .toList();
+      final acceptedHelperWasDemo =
+          request.acceptedHelperId != null &&
+          demoUserIds.contains(request.acceptedHelperId);
+      final filteredActionLog = request.actionLog
+          .where((entry) => !demoUserIds.contains(entry.actorId))
+          .toList();
+      final shouldResetToOpen =
+          request.acceptedHelperId == null &&
+          request.status == HelpRequestStatus.matching &&
+          filteredSuggestedHelperIds.isEmpty;
+      final normalizedStatus = (acceptedHelperWasDemo || shouldResetToOpen)
+          ? (filteredSuggestedHelperIds.isNotEmpty
+                ? HelpRequestStatus.matching
+                : HelpRequestStatus.open)
+          : request.status;
+
+      sanitizedRequests.add(
+        request.copyWith(
+          clearAcceptedHelper: acceptedHelperWasDemo,
+          status: normalizedStatus,
+          requesterCompletionConfirmed: acceptedHelperWasDemo
+              ? false
+              : request.requesterCompletionConfirmed,
+          helperCompletionConfirmed: acceptedHelperWasDemo
+              ? false
+              : request.helperCompletionConfirmed,
+          contactConsentFromRequester: acceptedHelperWasDemo
+              ? false
+              : request.contactConsentFromRequester,
+          contactConsentFromHelper: acceptedHelperWasDemo
+              ? false
+              : request.contactConsentFromHelper,
+          suggestedHelperIds: filteredSuggestedHelperIds,
+          actionLog: filteredActionLog,
+        ),
+      );
+    }
+    _requests
+      ..clear()
+      ..addAll(sanitizedRequests);
+
+    final removedMatchIds = _matches
+        .where(
+          (match) =>
+              removedRequestIds.contains(match.requestId) ||
+              demoUserIds.contains(match.requesterId) ||
+              demoUserIds.contains(match.helperId),
+        )
+        .map((match) => match.id)
+        .toSet();
+    _matches.removeWhere((match) => removedMatchIds.contains(match.id));
+
+    final removedThreadIds = _threads
+        .where(
+          (thread) =>
+              removedRequestIds.contains(thread.requestId) ||
+              thread.participantIds.any(demoUserIds.contains),
+        )
+        .map((thread) => thread.id)
+        .toSet();
+    _threads.removeWhere((thread) => removedThreadIds.contains(thread.id));
+
+    _messages.removeWhere(
+      (message) =>
+          removedThreadIds.contains(message.threadId) ||
+          demoUserIds.contains(message.senderId),
+    );
+    _reviews.removeWhere(
+      (review) =>
+          removedMatchIds.contains(review.matchId) ||
+          demoUserIds.contains(review.reviewerId) ||
+          demoUserIds.contains(review.revieweeId),
+    );
+    _reports.removeWhere(
+      (report) =>
+          demoUserIds.contains(report.reporterId) ||
+          (report.targetType == ReportTargetType.user &&
+              demoUserIds.contains(report.targetId)) ||
+          (report.targetType == ReportTargetType.request &&
+              removedRequestIds.contains(report.targetId)) ||
+          (report.targetType == ReportTargetType.chat &&
+              removedThreadIds.contains(report.targetId)),
+    );
+    _moodCheckIns.removeWhere(
+      (checkIn) => demoUserIds.contains(checkIn.userId),
+    );
+    _notifications.removeWhere(
+      (notification) => demoUserIds.contains(notification.userId),
+    );
+
+    final sanitizedSupportCircles = <SupportCircleEntity>[];
+    for (final circle in _supportCircles) {
+      final filteredMemberIds = circle.memberIds
+          .where((memberId) => !demoUserIds.contains(memberId))
+          .toList();
+      if (filteredMemberIds.isEmpty) {
+        continue;
+      }
+
+      sanitizedSupportCircles.add(
+        circle.copyWith(memberIds: filteredMemberIds),
+      );
+    }
+    _supportCircles
+      ..clear()
+      ..addAll(sanitizedSupportCircles);
+
+    final sanitizedUsers = <UserEntity>[];
+    for (final user in _users) {
+      if (demoUserIds.contains(user.id)) {
+        continue;
+      }
+
+      sanitizedUsers.add(
+        user.copyWith(
+          blockedUserIds: user.blockedUserIds
+              .where((userId) => !demoUserIds.contains(userId))
+              .toList(),
+          mutedUserIds: user.mutedUserIds
+              .where((userId) => !demoUserIds.contains(userId))
+              .toList(),
+          hiddenRequestIds: user.hiddenRequestIds
+              .where((requestId) => !removedRequestIds.contains(requestId))
+              .toList(),
+        ),
+      );
+    }
+    _users
+      ..clear()
+      ..addAll(sanitizedUsers);
+
+    _ensureCurrentUserContext();
+  }
+
+  Future<void> _syncLocationTrackingState({
+    bool requestPermissionIfNeeded = true,
+  }) async {
+    final user = _findUserById(_currentUserId);
+    if (user == null) {
+      await _stopLocationTracking();
+      return;
+    }
+
+    if (!user.usesDeviceLocation) {
+      await _stopLocationTracking();
+      return;
+    }
+
+    await refreshCurrentUserLocationFromDevice(
+      enableAutoUpdate: true,
+      requestPermissionIfNeeded: requestPermissionIfNeeded,
+    );
+  }
+
+  Future<bool> _ensureLocationAccess({
+    bool requestPermissionIfNeeded = true,
+  }) async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return false;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied &&
+          requestPermissionIfNeeded) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      return permission != LocationPermission.denied &&
+          permission != LocationPermission.deniedForever;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _ensureLocationTracking({
+    bool requestPermissionIfNeeded = true,
+  }) async {
+    if (_locationPositionSubscription != null) {
+      return;
+    }
+
+    final hasLocationAccess = await _ensureLocationAccess(
+      requestPermissionIfNeeded: requestPermissionIfNeeded,
+    );
+    if (!hasLocationAccess) {
+      return;
+    }
+
+    const locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 50,
+    );
+
+    _locationPositionSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+          (position) {
+            unawaited(_handleLocationPositionUpdate(position));
+          },
+        );
+  }
+
+  Future<void> _stopLocationTracking() async {
+    await _locationPositionSubscription?.cancel();
+    _locationPositionSubscription = null;
+  }
+
+  Future<void> _handleLocationPositionUpdate(Position position) async {
+    final user = _findUserById(_currentUserId);
+    if (user == null || !user.usesDeviceLocation) {
+      return;
+    }
+
+    final resolvedLocation = await _resolveLocationFromPosition(position);
+    if (resolvedLocation == null) {
+      return;
+    }
+
+    _applyCurrentUserDeviceLocation(
+      city: resolvedLocation.city,
+      area: resolvedLocation.area,
+      enableAutoUpdate: true,
+    );
+  }
+
+  Future<({String city, String area})?> _resolveLocationFromPosition(
+    Position position,
+  ) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      final placemark = placemarks.isNotEmpty ? placemarks.first : null;
+      final city = _joinDistinctLocationParts([
+        placemark?.locality,
+        placemark?.subAdministrativeArea,
+        placemark?.administrativeArea,
+        placemark?.country,
+      ]);
+      final area = _firstNonEmptyLocationPart([
+        placemark?.thoroughfare,
+        placemark?.street,
+        placemark?.name,
+      ]);
+
+      if (city.isEmpty && area.isEmpty) {
+        return null;
+      }
+
+      return (city: city, area: area);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _firstNonEmptyLocationPart(Iterable<String?> values) {
+    for (final value in values) {
+      final trimmedValue = value?.trim() ?? '';
+      if (trimmedValue.isNotEmpty) {
+        return trimmedValue;
+      }
+    }
+
+    return '';
+  }
+
+  String _joinDistinctLocationParts(Iterable<String?> values) {
+    final parts = <String>[];
+    final seenValues = <String>{};
+
+    for (final value in values) {
+      final trimmedValue = value?.trim() ?? '';
+      if (trimmedValue.isEmpty) {
+        continue;
+      }
+
+      final normalizedValue = trimmedValue.toLowerCase();
+      if (!seenValues.add(normalizedValue)) {
+        continue;
+      }
+
+      parts.add(trimmedValue);
+    }
+
+    return parts.join(', ');
+  }
+
+  void _applyCurrentUserDeviceLocation({
+    required String city,
+    required String area,
+    required bool enableAutoUpdate,
+  }) {
+    final user = _findUserById(_currentUserId);
+    if (user == null) {
+      return;
+    }
+
+    final normalizedCity = city.trim();
+    final normalizedArea = area.trim();
+    final resolvedCity = normalizedCity.isNotEmpty ? normalizedCity : user.city;
+    if (user.city == resolvedCity &&
+        user.area == normalizedArea &&
+        user.usesDeviceLocation == enableAutoUpdate) {
+      return;
+    }
+
+    _replaceUser(
+      user.copyWith(
+        city: resolvedCity,
+        area: normalizedArea,
+        usesDeviceLocation: enableAutoUpdate,
+      ),
+    );
+    notifyListeners();
   }
 
   UserEntity _upsertCurrentUserFromAuth(User authUser) {
@@ -2061,6 +2743,7 @@ class GhmeraAppState extends ChangeNotifier {
   @override
   void dispose() {
     _authStateSubscription?.cancel();
+    unawaited(_stopLocationTracking());
     super.dispose();
   }
 

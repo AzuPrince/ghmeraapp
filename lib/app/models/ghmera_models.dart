@@ -428,6 +428,8 @@ class UserEntity {
     this.receivedHelpCount = 0,
     this.blockedUserIds = const <String>[],
     this.mutedUserIds = const <String>[],
+    this.hiddenRequestIds = const <String>[],
+    this.usesDeviceLocation = true,
     this.privacySettings = const PrivacySettings(),
     this.twoFactorEnabled = false,
     this.isAdmin = false,
@@ -460,6 +462,8 @@ class UserEntity {
   final int receivedHelpCount;
   final List<String> blockedUserIds;
   final List<String> mutedUserIds;
+  final List<String> hiddenRequestIds;
+  final bool usesDeviceLocation;
   final PrivacySettings privacySettings;
   final bool twoFactorEnabled;
   final bool isAdmin;
@@ -510,6 +514,8 @@ class UserEntity {
     int? receivedHelpCount,
     List<String>? blockedUserIds,
     List<String>? mutedUserIds,
+    List<String>? hiddenRequestIds,
+    bool? usesDeviceLocation,
     PrivacySettings? privacySettings,
     bool? twoFactorEnabled,
     bool? isAdmin,
@@ -544,6 +550,8 @@ class UserEntity {
       receivedHelpCount: receivedHelpCount ?? this.receivedHelpCount,
       blockedUserIds: blockedUserIds ?? this.blockedUserIds,
       mutedUserIds: mutedUserIds ?? this.mutedUserIds,
+      hiddenRequestIds: hiddenRequestIds ?? this.hiddenRequestIds,
+      usesDeviceLocation: usesDeviceLocation ?? this.usesDeviceLocation,
       privacySettings: privacySettings ?? this.privacySettings,
       twoFactorEnabled: twoFactorEnabled ?? this.twoFactorEnabled,
       isAdmin: isAdmin ?? this.isAdmin,
