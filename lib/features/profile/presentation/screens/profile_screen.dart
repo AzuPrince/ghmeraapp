@@ -111,6 +111,15 @@ class ProfileScreen extends StatelessWidget {
     final appState = context.watch<GhmeraAppState>();
     final user = appState.currentUser;
     final theme = Theme.of(context);
+    final trustFlags = appState.currentUserTrustFlags;
+    final reportsAboutUser = appState.reportsAboutCurrentUser;
+    final activeReports = reportsAboutUser
+        .where(
+          (report) =>
+              report.status == ReportStatus.open ||
+              report.status == ReportStatus.investigating,
+        )
+        .toList();
     final normalizedBio = user.shortBio.trim().toLowerCase();
     final showBio =
         user.shortBio.trim().isNotEmpty &&
@@ -272,9 +281,7 @@ class ProfileScreen extends StatelessWidget {
                   Expanded(
                     child: _MetricTile(
                       label: 'Average review',
-                      value: appState.currentUserAverageReview.toStringAsFixed(
-                        1,
-                      ),
+                      value: user.averageRating.toStringAsFixed(1),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -294,15 +301,24 @@ class ProfileScreen extends StatelessWidget {
                   color: const Color(0xFF4F5F5C),
                 ),
               ),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: appState.reciprocityProgress,
-                  minHeight: 3,
-                  backgroundColor: const Color(0xFFE7EFEC),
+              if (appState.hasReciprocityActivity) ...[
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: appState.reciprocityProgress,
+                    minHeight: 3,
+                    backgroundColor: const Color(0xFFE7EFEC),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                Text(
+                  'Reciprocity value ${appState.reciprocityPercent}% of the current fairness window.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF667572),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -338,6 +354,31 @@ class ProfileScreen extends StatelessWidget {
                     )
                     .toList(),
               ),
+              const SizedBox(height: 18),
+              Text(
+                'You may request',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: RequestCategory.values
+                    .map(
+                      (category) => FilterChip(
+                        label: Text(category.label),
+                        selected: user.helpCategoriesRequested.contains(
+                          category,
+                        ),
+                        onSelected: (_) {
+                          appState.toggleCurrentUserRequestedCategory(category);
+                        },
+                      ),
+                    )
+                    .toList(),
+              ),
             ],
           ),
         ),
@@ -349,7 +390,75 @@ class ProfileScreen extends StatelessWidget {
           subtitle:
               'Community feedback reinforces helpfulness, respect, safety, reliability, and accuracy.',
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _MetricTile(
+                      label: 'Active reports',
+                      value: '${appState.activeSafetyReportsAboutCurrentUser}',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _MetricTile(
+                      label: 'Flagged reviews',
+                      value: '${appState.suspiciousReviewsAboutCurrentUser}',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (trustFlags.isNotEmpty) ...[
+                Text(
+                  'Live trust signals',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: trustFlags
+                      .map((flag) => Chip(label: Text(flag)))
+                      .toList(),
+                ),
+                const SizedBox(height: 14),
+              ],
+              if (activeReports.isNotEmpty)
+                for (final report in activeReports.take(3))
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7F3EB),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          report.reason,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          report.details.trim().isEmpty
+                              ? report.status.label
+                              : '${report.status.label}: ${report.details}',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: const Color(0xFF586965),
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               for (final review in appState.reviewsAboutCurrentUser)
                 Container(
                   width: double.infinity,
@@ -403,6 +512,20 @@ class ProfileScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+              if (appState.reviewsAboutCurrentUser.isEmpty &&
+                  activeReports.isEmpty &&
+                  trustFlags.isEmpty)
+                Text(
+                  'No reviews or safety signals have been recorded for this account yet.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF586965),
+                    height: 1.45,
+                  ),
+                ),
+              if (appState.reviewsAboutCurrentUser.isNotEmpty ||
+                  activeReports.isNotEmpty ||
+                  trustFlags.isNotEmpty)
+                const SizedBox(height: 4),
               _InfoRow(
                 icon: Icons.block_rounded,
                 title: '${user.blockedUserIds.length} blocked account(s)',

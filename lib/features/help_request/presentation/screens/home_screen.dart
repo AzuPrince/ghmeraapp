@@ -435,6 +435,107 @@ class _RequestDetailsScreen extends StatelessWidget {
   final HelpRequestEntity initialRequest;
   final ValueChanged<MessageThreadEntity> onOpenThread;
 
+  void _handleStartRequestWork(
+    BuildContext context,
+    GhmeraAppState appState,
+    HelpRequestEntity request,
+  ) {
+    final started = appState.startCurrentUserRequestWork(request.id);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          started
+              ? 'Request marked as in progress.'
+              : 'This request could not be moved to in progress.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleConfirmCompletion(
+    BuildContext context,
+    GhmeraAppState appState,
+    HelpRequestEntity request,
+  ) async {
+    final shouldConfirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm completion'),
+        content: const Text(
+          'Mark this request as complete from your side. The request closes after both participants confirm.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldConfirm != true || !context.mounted) {
+      return;
+    }
+
+    final confirmed = appState.confirmCurrentUserRequestCompletion(request.id);
+    final refreshedRequest = appState.requestById(request.id);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          !confirmed
+              ? 'Completion could not be updated.'
+              : refreshedRequest.status == HelpRequestStatus.completed
+              ? 'Both participants confirmed completion. Reviews are now open.'
+              : 'Your completion confirmation was saved.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openReviewSheet(
+    BuildContext context, {
+    required HelpRequestEntity request,
+    required UserEntity reviewee,
+  }) async {
+    final submitted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) =>
+          _ReviewSubmissionSheet(request: request, reviewee: reviewee),
+    );
+
+    if (submitted == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Review submitted and saved to your profile metrics.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openSafetyReportSheet(
+    BuildContext context, {
+    required HelpRequestEntity request,
+    required UserEntity reportedUser,
+  }) async {
+    final submitted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) =>
+          _SafetyReportSheet(request: request, reportedUser: reportedUser),
+    );
+
+    if (submitted == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Safety report submitted to moderators.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -462,6 +563,13 @@ class _RequestDetailsScreen extends StatelessWidget {
                   (candidate) => candidate.requestId == request.id,
                 );
             final activeMatch = helpingMatch ?? requesterMatch;
+            final isParticipant = appState.isCurrentUserParticipantForRequest(
+              request,
+            );
+            final hasConfirmedCompletion = appState
+                .hasCurrentUserConfirmedRequestCompletion(request);
+            final hasSubmittedReview = appState
+                .hasCurrentUserSubmittedReviewForRequest(request);
             final theme = Theme.of(context);
 
             return ListView(
@@ -615,6 +723,66 @@ class _RequestDetailsScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+                if (isParticipant && request.acceptedHelperId != null) ...[
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7F3EB),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Progress and accountability',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _Pill(
+                              label: request.requesterCompletionConfirmed
+                                  ? 'Requester confirmed'
+                                  : 'Requester pending',
+                              color: request.requesterCompletionConfirmed
+                                  ? const Color(0xFFE7F5ED)
+                                  : const Color(0xFFFFF1D9),
+                            ),
+                            _Pill(
+                              label: request.helperCompletionConfirmed
+                                  ? 'Helper confirmed'
+                                  : 'Helper pending',
+                              color: request.helperCompletionConfirmed
+                                  ? const Color(0xFFE7F5ED)
+                                  : const Color(0xFFFFF1D9),
+                            ),
+                            if (hasSubmittedReview)
+                              const _Pill(
+                                label: 'Your review submitted',
+                                color: Color(0xFFE8F1FF),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          hasConfirmedCompletion
+                              ? 'Your completion confirmation is already saved. The request closes after the other participant confirms too.'
+                              : 'When the help is done, confirm completion here. Reviews unlock after both participants confirm.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: const Color(0xFF586965),
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             );
           },
@@ -624,6 +792,16 @@ class _RequestDetailsScreen extends StatelessWidget {
         builder: (context, appState, _) {
           final request = appState.requestById(initialRequest.id);
           final protectedThread = appState.threadForRequest(request.id);
+          final otherParticipant = appState.otherParticipantForRequest(request);
+          final isParticipant = appState.isCurrentUserParticipantForRequest(
+            request,
+          );
+          final canStartRequest = appState.canCurrentUserStartRequest(request);
+          final canConfirmCompletion = appState
+              .canCurrentUserConfirmRequestCompletion(request);
+          final canSubmitReview = appState.canCurrentUserSubmitReviewForRequest(
+            request,
+          );
           final helperCanVolunteer =
               request.requesterId != appState.currentUserId &&
               request.status != HelpRequestStatus.completed &&
@@ -654,70 +832,429 @@ class _RequestDetailsScreen extends StatelessWidget {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(10, 6, 10, 12),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () {
-                        if (protectedThread != null) {
-                          onOpenThread(protectedThread);
-                          return;
-                        }
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            if (protectedThread != null) {
+                              onOpenThread(protectedThread);
+                              return;
+                            }
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Chat opens after a helper match is confirmed.',
-                            ),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.chat_bubble_outline_rounded),
-                      label: const Text('Chat with the person'),
-                      style: chatActionButtonStyle,
-                    ),
-                  ),
-                  if (helperCanVolunteer) const SizedBox(width: 12),
-                  if (helperCanVolunteer)
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: alreadyMatchedAsHelper
-                            ? null
-                            : () {
-                                final matched = appState
-                                    .volunteerForHelpRequest(request.id);
-                                if (!matched) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'This request is no longer available for matching.',
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Match confirmed. Protected chat is now available.',
-                                    ),
-                                  ),
-                                );
-                              },
-                        icon: const Icon(Icons.volunteer_activism_outlined),
-                        label: Text(
-                          alreadyMatchedAsHelper ? 'Matched' : 'I can help',
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Chat opens after a helper match is confirmed.',
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.chat_bubble_outline_rounded),
+                          label: const Text('Chat with the person'),
+                          style: chatActionButtonStyle,
                         ),
-                        style: helpActionButtonStyle,
+                      ),
+                      if (helperCanVolunteer) const SizedBox(width: 12),
+                      if (helperCanVolunteer)
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: alreadyMatchedAsHelper
+                                ? null
+                                : () {
+                                    final matched = appState
+                                        .volunteerForHelpRequest(request.id);
+                                    if (!matched) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'This request is no longer available for matching.',
+                                          ),
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Match confirmed. Protected chat is now available.',
+                                        ),
+                                      ),
+                                    );
+                                  },
+                            icon: const Icon(Icons.volunteer_activism_outlined),
+                            label: Text(
+                              alreadyMatchedAsHelper ? 'Matched' : 'I can help',
+                            ),
+                            style: helpActionButtonStyle,
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (isParticipant && request.acceptedHelperId != null) ...[
+                    if (canStartRequest) const SizedBox(height: 12),
+                    if (canStartRequest)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _handleStartRequestWork(
+                            context,
+                            appState,
+                            request,
+                          ),
+                          icon: const Icon(Icons.play_circle_outline_rounded),
+                          label: const Text('Mark help as in progress'),
+                        ),
+                      ),
+                    if (canConfirmCompletion) const SizedBox(height: 12),
+                    if (canConfirmCompletion)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _handleConfirmCompletion(
+                            context,
+                            appState,
+                            request,
+                          ),
+                          icon: const Icon(Icons.task_alt_rounded),
+                          label: const Text('Confirm completion'),
+                        ),
+                      ),
+                    if (canSubmitReview && otherParticipant != null)
+                      const SizedBox(height: 12),
+                    if (canSubmitReview && otherParticipant != null)
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.tonalIcon(
+                          onPressed: () => _openReviewSheet(
+                            context,
+                            request: request,
+                            reviewee: otherParticipant,
+                          ),
+                          icon: const Icon(Icons.rate_review_outlined),
+                          label: Text(
+                            'Leave a review for ${otherParticipant.fullName.split(' ').first}',
+                          ),
+                        ),
+                      ),
+                  ],
+                  if (otherParticipant != null) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _openSafetyReportSheet(
+                          context,
+                          request: request,
+                          reportedUser: otherParticipant,
+                        ),
+                        icon: const Icon(Icons.report_problem_outlined),
+                        label: Text(
+                          'Report ${otherParticipant.fullName.split(' ').first}',
+                        ),
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
           );
         },
       ),
+    );
+  }
+}
+
+class _ReviewSubmissionSheet extends StatefulWidget {
+  const _ReviewSubmissionSheet({required this.request, required this.reviewee});
+
+  final HelpRequestEntity request;
+  final UserEntity reviewee;
+
+  @override
+  State<_ReviewSubmissionSheet> createState() => _ReviewSubmissionSheetState();
+}
+
+class _ReviewSubmissionSheetState extends State<_ReviewSubmissionSheet> {
+  late final TextEditingController _feedbackController;
+  int _helpfulness = 5;
+  int _respectfulness = 5;
+  int _safety = 5;
+  int _reliability = 5;
+  int _accuracy = 5;
+
+  @override
+  void initState() {
+    super.initState();
+    _feedbackController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _feedbackController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomInset + 16),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Review ${widget.reviewee.fullName}',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'These scores update trust and review metrics immediately.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF61726F),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _RatingDropdown(
+              label: 'Helpfulness',
+              value: _helpfulness,
+              onChanged: (value) => setState(() => _helpfulness = value),
+            ),
+            const SizedBox(height: 10),
+            _RatingDropdown(
+              label: 'Respectfulness',
+              value: _respectfulness,
+              onChanged: (value) => setState(() => _respectfulness = value),
+            ),
+            const SizedBox(height: 10),
+            _RatingDropdown(
+              label: 'Safety',
+              value: _safety,
+              onChanged: (value) => setState(() => _safety = value),
+            ),
+            const SizedBox(height: 10),
+            _RatingDropdown(
+              label: 'Reliability',
+              value: _reliability,
+              onChanged: (value) => setState(() => _reliability = value),
+            ),
+            const SizedBox(height: 10),
+            _RatingDropdown(
+              label: 'Accuracy',
+              value: _accuracy,
+              onChanged: (value) => setState(() => _accuracy = value),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _feedbackController,
+              minLines: 3,
+              maxLines: 5,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Feedback',
+                hintText: 'Share what went well or what needs attention.',
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  final review = context
+                      .read<GhmeraAppState>()
+                      .submitReviewForRequest(
+                        requestId: widget.request.id,
+                        helpfulness: _helpfulness,
+                        respectfulness: _respectfulness,
+                        safety: _safety,
+                        reliability: _reliability,
+                        accuracy: _accuracy,
+                        feedback: _feedbackController.text,
+                      );
+                  if (review == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Review could not be submitted.'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  Navigator.of(context).pop(true);
+                },
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Submit review'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SafetyReportSheet extends StatefulWidget {
+  const _SafetyReportSheet({required this.request, required this.reportedUser});
+
+  final HelpRequestEntity request;
+  final UserEntity reportedUser;
+
+  @override
+  State<_SafetyReportSheet> createState() => _SafetyReportSheetState();
+}
+
+class _SafetyReportSheetState extends State<_SafetyReportSheet> {
+  static const List<String> _reasons = <String>[
+    'Safety concern',
+    'Harassment',
+    'Pressure to move off-platform',
+    'Fraud or deception',
+    'Spam',
+    'Other',
+  ];
+
+  late final TextEditingController _detailsController;
+  String _selectedReason = _reasons.first;
+
+  @override
+  void initState() {
+    super.initState();
+    _detailsController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _detailsController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomInset + 16),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Report ${widget.reportedUser.fullName}',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'This creates a moderator-visible safety report and updates safety signals immediately.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF61726F),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedReason,
+              decoration: const InputDecoration(labelText: 'Reason'),
+              items: _reasons
+                  .map(
+                    (reason) => DropdownMenuItem<String>(
+                      value: reason,
+                      child: Text(reason),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) {
+                  return;
+                }
+                setState(() => _selectedReason = value);
+              },
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _detailsController,
+              minLines: 3,
+              maxLines: 5,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Details',
+                hintText: 'Describe what happened and any immediate risk.',
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  final report = context
+                      .read<GhmeraAppState>()
+                      .submitParticipantSafetyReportForRequest(
+                        requestId: widget.request.id,
+                        reason: _selectedReason,
+                        details: _detailsController.text,
+                      );
+                  if (report == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Safety report could not be submitted.'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  Navigator.of(context).pop(true);
+                },
+                icon: const Icon(Icons.report_outlined),
+                label: const Text('Submit safety report'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RatingDropdown extends StatelessWidget {
+  const _RatingDropdown({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<int>(
+      initialValue: value,
+      decoration: InputDecoration(labelText: label),
+      items: List<DropdownMenuItem<int>>.generate(5, (index) {
+        final score = index + 1;
+        return DropdownMenuItem<int>(value: score, child: Text('$score / 5'));
+      }),
+      onChanged: (selected) {
+        if (selected == null) {
+          return;
+        }
+        onChanged(selected);
+      },
     );
   }
 }
@@ -901,18 +1438,28 @@ class _OverviewTab extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 18),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(5),
-                  child: LinearProgressIndicator(
-                    value: appState.reciprocityProgress,
-                    minHeight: 3,
-                    backgroundColor: const Color(0xFFD0D7DF),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      Theme.of(context).colorScheme.primary,
+                if (appState.hasReciprocityActivity) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(5),
+                    child: LinearProgressIndicator(
+                      value: appState.reciprocityProgress,
+                      minHeight: 3,
+                      backgroundColor: const Color(0xFFD0D7DF),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Reciprocity value ${appState.reciprocityPercent}%',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF53626A),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
                 Text(
                   appState.reciprocityMessage,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(

@@ -17,6 +17,7 @@ class GhmeraAppState extends ChangeNotifier {
 
     _isHydratingRemoteState = true;
     _ensureCurrentUserContext();
+    _syncDerivedUserMetrics();
 
     try {
       final auth = FirebaseAuth.instance;
@@ -34,6 +35,12 @@ class GhmeraAppState extends ChangeNotifier {
   static const String _defaultCurrentUserId = 'user_current';
   static const int _matchSuggestionLimit = 3;
   static const int reciprocityFloor = -5;
+  static const Set<HelpRequestStatus> _reciprocityTrackedRequestStatuses =
+      <HelpRequestStatus>{
+        HelpRequestStatus.accepted,
+        HelpRequestStatus.inProgress,
+        HelpRequestStatus.completed,
+      };
 
   final AppDatabase _database = AppDatabase.instance;
   final AppFirestoreSyncService _appFirestoreSyncService =
@@ -246,6 +253,33 @@ class GhmeraAppState extends ChangeNotifier {
   int get unreadNotificationsCount =>
       currentNotifications.where((notification) => !notification.isRead).length;
 
+  List<ReportEntity> get reportsAboutCurrentUser {
+    final reports =
+        _reports.where((report) {
+          return report.targetType == ReportTargetType.user &&
+              report.targetId == _currentUserId;
+        }).toList()..sort(
+          (first, second) => second.createdAt.compareTo(first.createdAt),
+        );
+    return reports;
+  }
+
+  int get activeSafetyReportsAboutCurrentUser =>
+      _activeSafetyReportCountForUser(_currentUserId);
+
+  int get suspiciousReviewsAboutCurrentUser =>
+      _suspiciousReviewCountForUser(_currentUserId);
+
+  List<String> get currentUserTrustFlags =>
+      List<String>.unmodifiable(currentUser.trustFlags);
+
+  bool get hasReciprocityActivity {
+    return currentUser.helpGivenCount > 0 ||
+        currentUser.helpReceivedCount > 0 ||
+        currentUser.completedHelpCount > 0 ||
+        currentUser.receivedHelpCount > 0;
+  }
+
   bool get canCreateRequest {
     return currentUser.canBypassReciprocity ||
         currentUser.helpBalance >= reciprocityFloor;
@@ -254,6 +288,10 @@ class GhmeraAppState extends ChangeNotifier {
   String get reciprocityMessage {
     if (currentUser.canBypassReciprocity) {
       return 'Your account is exempt from reciprocity holds. You can keep requesting support while the team monitors safety.';
+    }
+
+    if (!hasReciprocityActivity) {
+      return 'Reciprocity tracking starts after your first matched help exchange.';
     }
 
     if (currentUser.helpBalance >= 2) {
@@ -268,19 +306,18 @@ class GhmeraAppState extends ChangeNotifier {
   }
 
   double get reciprocityProgress {
+    if (!hasReciprocityActivity) {
+      return 0;
+    }
+
     final progress = (currentUser.helpBalance - reciprocityFloor) / 10;
     return progress.clamp(0.0, 1.0).toDouble();
   }
 
-  double get currentUserAverageReview {
-    if (reviewsAboutCurrentUser.isEmpty) {
-      return 0;
-    }
+  int get reciprocityPercent => (reciprocityProgress * 100).round();
 
-    final total = reviewsAboutCurrentUser
-        .map((review) => review.rating)
-        .reduce((sum, rating) => sum + rating);
-    return total / reviewsAboutCurrentUser.length;
+  double get currentUserAverageReview {
+    return currentUser.averageRating;
   }
 
   int get totalUsers => _users.length;
@@ -417,6 +454,78 @@ class GhmeraAppState extends ChangeNotifier {
     }
 
     return null;
+  }
+
+  HelpMatchEntity? acceptedMatchForRequest(HelpRequestEntity request) {
+    final helperId = request.acceptedHelperId;
+    if (helperId == null) {
+      return null;
+    }
+
+    return matchForRequestAndHelper(requestId: request.id, helperId: helperId);
+  }
+
+  UserEntity? otherParticipantForRequest(HelpRequestEntity request) {
+    if (request.requesterId == _currentUserId) {
+      final helperId = request.acceptedHelperId;
+      if (helperId == null) {
+        return null;
+      }
+
+      return _findUserById(helperId);
+    }
+
+    return _findUserById(request.requesterId);
+  }
+
+  bool isCurrentUserParticipantForRequest(HelpRequestEntity request) {
+    return request.requesterId == _currentUserId ||
+        request.acceptedHelperId == _currentUserId;
+  }
+
+  bool hasCurrentUserConfirmedRequestCompletion(HelpRequestEntity request) {
+    if (request.requesterId == _currentUserId) {
+      return request.requesterCompletionConfirmed;
+    }
+    if (request.acceptedHelperId == _currentUserId) {
+      return request.helperCompletionConfirmed;
+    }
+
+    return false;
+  }
+
+  bool canCurrentUserStartRequest(HelpRequestEntity request) {
+    return isCurrentUserParticipantForRequest(request) &&
+        request.acceptedHelperId != null &&
+        request.status == HelpRequestStatus.accepted;
+  }
+
+  bool canCurrentUserConfirmRequestCompletion(HelpRequestEntity request) {
+    return isCurrentUserParticipantForRequest(request) &&
+        request.acceptedHelperId != null &&
+        (request.status == HelpRequestStatus.accepted ||
+            request.status == HelpRequestStatus.inProgress) &&
+        !hasCurrentUserConfirmedRequestCompletion(request);
+  }
+
+  bool hasCurrentUserSubmittedReviewForRequest(HelpRequestEntity request) {
+    final acceptedMatch = acceptedMatchForRequest(request);
+    if (acceptedMatch == null) {
+      return false;
+    }
+
+    return _reviews.any(
+      (review) =>
+          review.matchId == acceptedMatch.id &&
+          review.reviewerId == _currentUserId,
+    );
+  }
+
+  bool canCurrentUserSubmitReviewForRequest(HelpRequestEntity request) {
+    return isCurrentUserParticipantForRequest(request) &&
+        request.status == HelpRequestStatus.completed &&
+        request.acceptedHelperId != null &&
+        !hasCurrentUserSubmittedReviewForRequest(request);
   }
 
   void setAvailability(bool value) {
@@ -750,6 +859,325 @@ class GhmeraAppState extends ChangeNotifier {
       matchCandidate: matchCandidate,
     );
     return true;
+  }
+
+  bool startCurrentUserRequestWork(String requestId) {
+    final requestIndex = _requests.indexWhere(
+      (candidate) => candidate.id == requestId,
+    );
+    if (requestIndex == -1) {
+      return false;
+    }
+
+    final request = _requests[requestIndex];
+    if (!canCurrentUserStartRequest(request)) {
+      return false;
+    }
+
+    final now = DateTime.now();
+    final updatedRequest = request.copyWith(
+      status: HelpRequestStatus.inProgress,
+      actionLog: <HelpActionLogEntry>[
+        ...request.actionLog,
+        HelpActionLogEntry(
+          actorId: _currentUserId,
+          action: request.requesterId == _currentUserId
+              ? 'Requester marked the help session as in progress'
+              : 'Helper marked the help session as in progress',
+          createdAt: now,
+        ),
+      ],
+    );
+    _replaceRequest(updatedRequest);
+
+    final acceptedMatch = acceptedMatchForRequest(request);
+    if (acceptedMatch != null) {
+      final matchIndex = _matches.indexWhere(
+        (candidate) => candidate.id == acceptedMatch.id,
+      );
+      if (matchIndex != -1) {
+        _matches[matchIndex] = acceptedMatch.copyWith(
+          status: MatchStatus.inProgress,
+        );
+      }
+    }
+
+    final otherParticipant = otherParticipantForRequest(request);
+    if (otherParticipant != null) {
+      _notifications.insert(
+        0,
+        NotificationEntity(
+          id: 'notification_${_notifications.length + 1}',
+          userId: otherParticipant.id,
+          type: NotificationType.adminUpdate,
+          title: 'Help is now in progress',
+          message:
+              '${currentUser.fullName} marked ${request.title} as in progress.',
+          createdAt: now,
+        ),
+      );
+    }
+
+    notifyListeners();
+    return true;
+  }
+
+  bool confirmCurrentUserRequestCompletion(String requestId) {
+    final requestIndex = _requests.indexWhere(
+      (candidate) => candidate.id == requestId,
+    );
+    if (requestIndex == -1) {
+      return false;
+    }
+
+    final request = _requests[requestIndex];
+    if (!canCurrentUserConfirmRequestCompletion(request)) {
+      return false;
+    }
+
+    final now = DateTime.now();
+    final requesterConfirmed = request.requesterId == _currentUserId
+        ? true
+        : request.requesterCompletionConfirmed;
+    final helperConfirmed = request.acceptedHelperId == _currentUserId
+        ? true
+        : request.helperCompletionConfirmed;
+    final fullyCompleted = requesterConfirmed && helperConfirmed;
+    final updatedRequest = request.copyWith(
+      status: fullyCompleted
+          ? HelpRequestStatus.completed
+          : HelpRequestStatus.inProgress,
+      requesterCompletionConfirmed: requesterConfirmed,
+      helperCompletionConfirmed: helperConfirmed,
+      actionLog: <HelpActionLogEntry>[
+        ...request.actionLog,
+        HelpActionLogEntry(
+          actorId: _currentUserId,
+          action: fullyCompleted
+              ? 'Completion was confirmed and the request was closed'
+              : request.requesterId == _currentUserId
+              ? 'Requester confirmed they received the help'
+              : 'Helper confirmed they completed the help',
+          createdAt: now,
+        ),
+      ],
+    );
+    _replaceRequest(updatedRequest);
+
+    final acceptedMatch = acceptedMatchForRequest(request);
+    if (acceptedMatch != null) {
+      final matchIndex = _matches.indexWhere(
+        (candidate) => candidate.id == acceptedMatch.id,
+      );
+      if (matchIndex != -1) {
+        _matches[matchIndex] = acceptedMatch.copyWith(
+          status: fullyCompleted
+              ? MatchStatus.completed
+              : MatchStatus.inProgress,
+          completedAt: fullyCompleted ? now : acceptedMatch.completedAt,
+        );
+      }
+    }
+
+    final otherParticipant = otherParticipantForRequest(request);
+    if (otherParticipant != null) {
+      _notifications.insert(
+        0,
+        NotificationEntity(
+          id: 'notification_${_notifications.length + 1}',
+          userId: otherParticipant.id,
+          type: fullyCompleted
+              ? NotificationType.helpCompleted
+              : NotificationType.adminUpdate,
+          title: fullyCompleted
+              ? 'Help marked complete'
+              : 'Completion confirmation pending',
+          message: fullyCompleted
+              ? '${currentUser.fullName} confirmed ${request.title} is complete. You can now leave a review.'
+              : '${currentUser.fullName} marked ${request.title} as complete. Confirm when you are done so the request can close.',
+          createdAt: now,
+        ),
+      );
+    }
+
+    if (fullyCompleted && request.acceptedHelperId != null) {
+      _notifications.insert(
+        0,
+        NotificationEntity(
+          id: 'notification_${_notifications.length + 1}',
+          userId: request.requesterId,
+          type: NotificationType.helpCompleted,
+          title: 'Request completed',
+          message:
+              '${request.title} was closed after both participants confirmed completion.',
+          createdAt: now,
+        ),
+      );
+      _notifications.insert(
+        0,
+        NotificationEntity(
+          id: 'notification_${_notifications.length + 1}',
+          userId: request.acceptedHelperId!,
+          type: NotificationType.helpCompleted,
+          title: 'Help completed',
+          message:
+              '${request.title} was closed after both participants confirmed completion.',
+          createdAt: now,
+        ),
+      );
+    }
+
+    notifyListeners();
+    return true;
+  }
+
+  ReviewEntity? submitReviewForRequest({
+    required String requestId,
+    required int helpfulness,
+    required int respectfulness,
+    required int safety,
+    required int reliability,
+    required int accuracy,
+    required String feedback,
+  }) {
+    final requestIndex = _requests.indexWhere(
+      (candidate) => candidate.id == requestId,
+    );
+    if (requestIndex == -1) {
+      return null;
+    }
+
+    final request = _requests[requestIndex];
+    if (!canCurrentUserSubmitReviewForRequest(request)) {
+      return null;
+    }
+
+    final acceptedMatch = acceptedMatchForRequest(request);
+    final reviewee = otherParticipantForRequest(request);
+    if (acceptedMatch == null || reviewee == null) {
+      return null;
+    }
+
+    final now = DateTime.now();
+    final normalizedFeedback = feedback.trim();
+    final review = ReviewEntity(
+      id: 'review_${_reviews.length + 1}',
+      matchId: acceptedMatch.id,
+      reviewerId: _currentUserId,
+      revieweeId: reviewee.id,
+      helpfulness: helpfulness.clamp(1, 5),
+      respectfulness: respectfulness.clamp(1, 5),
+      safety: safety.clamp(1, 5),
+      reliability: reliability.clamp(1, 5),
+      accuracy: accuracy.clamp(1, 5),
+      feedback: normalizedFeedback.isEmpty
+          ? 'No written feedback provided.'
+          : normalizedFeedback,
+      createdAt: now,
+      flaggedSuspicious: safety <= 2 || respectfulness <= 2 || reliability <= 2,
+    );
+    _reviews.insert(0, review);
+    _replaceRequest(
+      request.copyWith(
+        actionLog: <HelpActionLogEntry>[
+          ...request.actionLog,
+          HelpActionLogEntry(
+            actorId: _currentUserId,
+            action: 'Submitted a post-help review',
+            createdAt: now,
+          ),
+        ],
+      ),
+    );
+    _notifications.insert(
+      0,
+      NotificationEntity(
+        id: 'notification_${_notifications.length + 1}',
+        userId: reviewee.id,
+        type: NotificationType.adminUpdate,
+        title: 'New review received',
+        message:
+            '${currentUser.fullName} left a review after ${request.title}.',
+        createdAt: now,
+      ),
+    );
+
+    notifyListeners();
+    return review;
+  }
+
+  ReportEntity? submitParticipantSafetyReportForRequest({
+    required String requestId,
+    required String reason,
+    required String details,
+  }) {
+    final requestIndex = _requests.indexWhere(
+      (candidate) => candidate.id == requestId,
+    );
+    if (requestIndex == -1) {
+      return null;
+    }
+
+    final request = _requests[requestIndex];
+    final reportedUser = otherParticipantForRequest(request);
+    final trimmedReason = reason.trim();
+    if (reportedUser == null || trimmedReason.isEmpty) {
+      return null;
+    }
+
+    final now = DateTime.now();
+    final trimmedDetails = details.trim();
+    final report = ReportEntity(
+      id: 'report_${_reports.length + 1}',
+      reporterId: _currentUserId,
+      targetType: ReportTargetType.user,
+      targetId: reportedUser.id,
+      reason: trimmedReason,
+      details: trimmedDetails.isEmpty
+          ? 'Reported from request ${request.title}.'
+          : 'Request ${request.title}: $trimmedDetails',
+      status: ReportStatus.open,
+      createdAt: now,
+    );
+    _reports.insert(0, report);
+    _replaceRequest(
+      request.copyWith(
+        safetyCheckInRequired: true,
+        actionLog: <HelpActionLogEntry>[
+          ...request.actionLog,
+          HelpActionLogEntry(
+            actorId: _currentUserId,
+            action:
+                'Reported ${reportedUser.fullName} to moderators for a safety concern',
+            createdAt: now,
+          ),
+        ],
+      ),
+    );
+
+    for (var index = 0; index < _threads.length; index++) {
+      final thread = _threads[index];
+      if (thread.requestId != request.id) {
+        continue;
+      }
+      _threads[index] = thread.copyWith(flaggedSafetyConcern: true);
+    }
+
+    _notifications.insert(
+      0,
+      NotificationEntity(
+        id: 'notification_${_notifications.length + 1}',
+        userId: _currentUserId,
+        type: NotificationType.safetyAlert,
+        title: 'Safety report submitted',
+        message:
+            'Your report about ${reportedUser.fullName} was sent to moderators.',
+        createdAt: now,
+      ),
+    );
+
+    notifyListeners();
+    return report;
   }
 
   bool _isClosedRequest(HelpRequestEntity request) {
@@ -1285,6 +1713,8 @@ class GhmeraAppState extends ChangeNotifier {
       return;
     }
 
+    _syncDerivedUserMetrics();
+
     if (notifyListenersAfter) {
       notifyListeners();
     } else {
@@ -1319,8 +1749,177 @@ class GhmeraAppState extends ChangeNotifier {
 
   @override
   void notifyListeners() {
+    _syncDerivedUserMetrics();
     _persistAppState();
     super.notifyListeners();
+  }
+
+  void _syncDerivedUserMetrics() {
+    for (var index = 0; index < _users.length; index++) {
+      final user = _users[index];
+      final helpGivenCount = _requests.where((request) {
+        return _requestCountsTowardReciprocity(request) &&
+            request.acceptedHelperId == user.id;
+      }).length;
+      final helpReceivedCount = _requests.where((request) {
+        return _requestCountsTowardReciprocity(request) &&
+            request.requesterId == user.id;
+      }).length;
+      final completedHelpCount = _requests.where((request) {
+        return _requestCountsTowardCompletedSupport(request) &&
+            request.acceptedHelperId == user.id;
+      }).length;
+      final receivedHelpCount = _requests.where((request) {
+        return _requestCountsTowardCompletedSupport(request) &&
+            request.requesterId == user.id;
+      }).length;
+      final reviewsAboutUser = _reviews.where(
+        (review) => review.revieweeId == user.id,
+      );
+      final averageRating = _averageRatingForReviews(reviewsAboutUser);
+      final trustFlags = _buildTrustFlags(
+        user: user,
+        averageRating: averageRating,
+        completedHelpCount: completedHelpCount,
+      );
+      final trustScore = _calculateTrustScore(
+        user: user,
+        averageRating: averageRating,
+        completedHelpCount: completedHelpCount,
+        trustFlags: trustFlags,
+      );
+
+      if (user.helpGivenCount == helpGivenCount &&
+          user.helpReceivedCount == helpReceivedCount &&
+          user.completedHelpCount == completedHelpCount &&
+          user.receivedHelpCount == receivedHelpCount &&
+          user.averageRating == averageRating &&
+          user.trustScore == trustScore &&
+          _listEquals(user.trustFlags, trustFlags)) {
+        continue;
+      }
+
+      _users[index] = user.copyWith(
+        helpGivenCount: helpGivenCount,
+        helpReceivedCount: helpReceivedCount,
+        completedHelpCount: completedHelpCount,
+        receivedHelpCount: receivedHelpCount,
+        averageRating: averageRating,
+        trustScore: trustScore,
+        trustFlags: trustFlags,
+      );
+    }
+  }
+
+  double _averageRatingForReviews(Iterable<ReviewEntity> reviews) {
+    var total = 0.0;
+    var count = 0;
+    for (final review in reviews) {
+      total += review.rating;
+      count += 1;
+    }
+
+    if (count == 0) {
+      return 0;
+    }
+
+    return total / count;
+  }
+
+  List<String> _buildTrustFlags({
+    required UserEntity user,
+    required double averageRating,
+    required int completedHelpCount,
+  }) {
+    final activeSafetyReports = _activeSafetyReportCountForUser(user.id);
+    final suspiciousReviews = _suspiciousReviewCountForUser(user.id);
+    final flags = <String>[
+      if (user.trustedHelper) 'Trusted helper badge',
+      if (user.idVerified) 'ID verified',
+      if (user.phoneVerified) 'Phone verified',
+      if (completedHelpCount >= 5) '$completedHelpCount completed help records',
+      if (averageRating >= 4)
+        '${averageRating.toStringAsFixed(1)} average review',
+      if (activeSafetyReports > 0)
+        '$activeSafetyReports active safety report${activeSafetyReports == 1 ? '' : 's'}',
+      if (suspiciousReviews > 0)
+        '$suspiciousReviews suspicious review flag${suspiciousReviews == 1 ? '' : 's'}',
+      if (user.blockedUserIds.isNotEmpty)
+        '${user.blockedUserIds.length} blocked account safeguard${user.blockedUserIds.length == 1 ? '' : 's'}',
+      if (user.mutedUserIds.isNotEmpty)
+        '${user.mutedUserIds.length} muted conversation safeguard${user.mutedUserIds.length == 1 ? '' : 's'}',
+    ];
+    return flags;
+  }
+
+  double _calculateTrustScore({
+    required UserEntity user,
+    required double averageRating,
+    required int completedHelpCount,
+    required List<String> trustFlags,
+  }) {
+    final activeSafetyReports = _activeSafetyReportCountForUser(user.id);
+    final suspiciousReviews = _suspiciousReviewCountForUser(user.id);
+
+    var score = 35.0;
+    score += averageRating * 10;
+    score += completedHelpCount.clamp(0, 20) * 1.5;
+    score += user.helpBalance.clamp(-5, 10) * 1.2;
+    score += user.verificationBadges.length * 3.5;
+    if (user.trustedHelper) {
+      score += 8;
+    }
+    score -= activeSafetyReports * 12;
+    score -= suspiciousReviews * 8;
+    score -= user.blockedUserIds.length * 1.5;
+    score -= user.mutedUserIds.length * 0.5;
+    score += trustFlags.length * 0.4;
+
+    return score.clamp(0, 99).toDouble();
+  }
+
+  bool _listEquals(List<String> first, List<String> second) {
+    if (identical(first, second)) {
+      return true;
+    }
+    if (first.length != second.length) {
+      return false;
+    }
+
+    for (var index = 0; index < first.length; index++) {
+      if (first[index] != second[index]) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  int _activeSafetyReportCountForUser(String userId) {
+    return _reports.where((report) {
+      return report.targetType == ReportTargetType.user &&
+          report.targetId == userId &&
+          (report.status == ReportStatus.open ||
+              report.status == ReportStatus.investigating);
+    }).length;
+  }
+
+  int _suspiciousReviewCountForUser(String userId) {
+    return _reviews
+        .where(
+          (review) => review.revieweeId == userId && review.flaggedSuspicious,
+        )
+        .length;
+  }
+
+  bool _requestCountsTowardReciprocity(HelpRequestEntity request) {
+    return request.acceptedHelperId != null &&
+        _reciprocityTrackedRequestStatuses.contains(request.status);
+  }
+
+  bool _requestCountsTowardCompletedSupport(HelpRequestEntity request) {
+    return request.acceptedHelperId != null &&
+        request.status == HelpRequestStatus.completed;
   }
 
   UserEntity? _findUserById(String id) {
