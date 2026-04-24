@@ -59,6 +59,44 @@ class AppFirestoreSyncService {
     }
   }
 
+  Stream<Map<String, dynamic>?> watchDatabase() async* {
+    if (Firebase.apps.isEmpty) {
+      return;
+    }
+
+    final trackerIdentity = await _resolveTrackerIdentity();
+    if (trackerIdentity == null) {
+      return;
+    }
+
+    final trackerRef = _trackerRef(trackerIdentity.docId);
+    yield* trackerRef
+        .collection(_appStateSubcollection)
+        .doc(_appStateDocId)
+        .snapshots()
+        .asyncMap((appStateSnapshot) async {
+          try {
+            if (appStateSnapshot.exists) {
+              final rawDatabase = appStateSnapshot.data()?['database'];
+              if (rawDatabase is Map) {
+                return _normalizeMap(rawDatabase);
+              }
+            }
+
+            return _loadFallbackDatabase(
+              trackerRef: trackerRef,
+              authEmail: trackerIdentity.authEmail,
+            );
+          } catch (error, stackTrace) {
+            debugPrint('Firestore app-state watch failed: $error');
+            if (kDebugMode) {
+              debugPrintStack(stackTrace: stackTrace);
+            }
+            return null;
+          }
+        });
+  }
+
   Future<void> syncDatabase({
     required Map<String, dynamic> database,
     required List<UserEntity> users,

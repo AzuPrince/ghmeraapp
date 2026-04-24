@@ -58,6 +58,7 @@ class GhmeraAppState extends ChangeNotifier {
   final RequestMatchingEngine _requestMatchingEngine =
       const RequestMatchingEngine();
   StreamSubscription<User?>? _authStateSubscription;
+  StreamSubscription<Map<String, dynamic>?>? _remoteDatabaseSubscription;
   StreamSubscription<Position>? _locationPositionSubscription;
   String _currentUserId;
   bool _isHydratingRemoteState = false;
@@ -1979,6 +1980,61 @@ class GhmeraAppState extends ChangeNotifier {
     );
   }
 
+  void _startFirestoreLiveSync() {
+    unawaited(_remoteDatabaseSubscription?.cancel());
+    _remoteDatabaseSubscription = _appFirestoreSyncService
+        .watchDatabase()
+        .listen(
+          (rawDatabase) {
+            if (rawDatabase == null) {
+              return;
+            }
+
+            _applyRemoteDatabase(rawDatabase);
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            debugPrint('Failed to watch Firestore app state: $error');
+            debugPrintStack(stackTrace: stackTrace);
+          },
+        );
+  }
+
+  void _applyRemoteDatabase(Map<String, dynamic> rawDatabase) {
+    final localDatabase = _database.toMap(
+      currentUserEmail: _resolvedCurrentUserEmail,
+    );
+    if (_deepEquals(localDatabase, rawDatabase)) {
+      return;
+    }
+
+    _isHydratingRemoteState = true;
+    try {
+      _database.hydrateFromMap(rawDatabase);
+      _currentUserId = _database.currentUserId;
+
+      final authUser = Firebase.apps.isNotEmpty
+          ? FirebaseAuth.instance.currentUser
+          : null;
+      if (authUser != null) {
+        final syncedUser = _upsertCurrentUserFromAuth(authUser);
+        _currentUserId = syncedUser.id;
+        _removeLegacyDemoData();
+        _database.currentUserId = _currentUserId;
+      } else {
+        _ensureCurrentUserContext();
+      }
+
+      _syncDerivedUserMetrics();
+      super.notifyListeners();
+      unawaited(_syncLocationTrackingState(requestPermissionIfNeeded: false));
+    } catch (error, stackTrace) {
+      debugPrint('Failed to apply remote Firestore app state: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      _isHydratingRemoteState = false;
+    }
+  }
+
   Future<void> _restoreAppStateFromFirestore() async {
     try {
       final rawDatabase = await _appFirestoreSyncService.loadDatabase();
@@ -1999,6 +2055,7 @@ class GhmeraAppState extends ChangeNotifier {
         _ensureCurrentUserContext();
       }
 
+      _startFirestoreLiveSync();
       await _syncLocationTrackingState();
     } catch (error, stackTrace) {
       debugPrint('Failed to restore Firestore app state: $error');
@@ -2037,6 +2094,7 @@ class GhmeraAppState extends ChangeNotifier {
     }
 
     unawaited(_syncLocationTrackingState());
+    _startFirestoreLiveSync();
     _syncDerivedUserMetrics();
 
     if (notifyListenersAfter) {
@@ -2237,6 +2295,43 @@ class GhmeraAppState extends ChangeNotifier {
     }
 
     return true;
+  }
+
+  bool _deepEquals(Object? first, Object? second) {
+    if (identical(first, second)) {
+      return true;
+    }
+    if (first is num && second is num) {
+      return first.toDouble() == second.toDouble();
+    }
+    if (first is List && second is List) {
+      if (first.length != second.length) {
+        return false;
+      }
+
+      for (var index = 0; index < first.length; index++) {
+        if (!_deepEquals(first[index], second[index])) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+    if (first is Map && second is Map) {
+      if (first.length != second.length) {
+        return false;
+      }
+
+      for (final key in first.keys) {
+        if (!second.containsKey(key) || !_deepEquals(first[key], second[key])) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    return first == second;
   }
 
   int _activeSafetyReportCountForUser(String userId) {
@@ -2743,6 +2838,7 @@ class GhmeraAppState extends ChangeNotifier {
   @override
   void dispose() {
     _authStateSubscription?.cancel();
+    _remoteDatabaseSubscription?.cancel();
     unawaited(_stopLocationTracking());
     super.dispose();
   }
