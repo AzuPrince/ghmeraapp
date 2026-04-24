@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "439222343527",
+    "project_id": "ghmeraapp-aeb79",
+    "storage_bucket": "ghmeraapp-aeb79.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:439222343527:android:5dd908dd9feb02611901c2",
+        "android_client_info": {
+          "package_name": "com.peatech.ghmera_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "439222343527-ejucoubb1h9fg86asroah4jib2e5fs3t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.peatech.ghmera_app",
+            "certificate_hash": "146e96f1f2e04d6e5da7a7b69b78a0862135ba21"
+          }
+        },
+        {
+          "client_id": "439222343527-kksj2d02c3ell375is31s36795a0p5s7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAya1Np3sp8TG5RsnratB5kFWMn6iGUC7g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "439222343527-kksj2d02c3ell375is31s36795a0p5s7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "439222343527-3n1jp0l99a6e2ojrs1pib10msb3js70v.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.peatech.ghmeraApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

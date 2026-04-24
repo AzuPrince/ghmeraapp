@@ -1,0 +1,822 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{booktabs}
+
+\setstretch{1.12}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Ghmera Product Documentation}
+\rhead{Peatech}
+\cfoot{\thepage}
+
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection.}{0.5em}{}
+
+\title{\textbf{Ghmera (GH)}\\Full Product Documentation}
+\author{Owned by \textbf{Peatech}}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Executive Summary}
+
+Ghmera (GH) is a mobile-first help and support matching platform owned by \textbf{Peatech}. The platform is designed to connect people who need help with people who are willing and available to help. Its primary purpose is not generic social networking, but the creation of a trusted, secure, and structured ecosystem where users can request support, offer support, get matched intelligently, communicate safely, and complete meaningful assistance.
+
+Beyond task-based help, Ghmera also aims to address loneliness, emotional distress, and depression by building human-centered support mechanisms into the platform. This includes emotional support matching, daily wellbeing check-ins, reciprocity rules that encourage purpose through helping others, and safety systems that protect all users. The product should be designed as a scalable, trust-based mutual aid platform rather than a one-sided service marketplace.
+
+\section{Product Overview}
+
+\subsection{Product Name}
+\textbf{Ghmera (GH)}
+
+\subsection{Owner}
+\textbf{Peatech}
+
+\subsection{Product Type}
+Mobile-first help and support matching platform
+
+\subsection{Core Idea}
+Ghmera enables people to:
+\begin{itemize}[leftmargin=1.5em]
+    \item request help
+    \item offer help
+    \item get matched with relevant users
+    \item communicate safely
+    \item complete support interactions
+\end{itemize}
+
+\subsection{Primary Function}
+The primary function of Ghmera is to allow a user to request help and get matched with someone who is willing and available to provide that help.
+
+\subsection{Secondary Functions}
+Ghmera also exists to:
+\begin{itemize}[leftmargin=1.5em]
+    \item reduce loneliness and social isolation
+    \item support emotional wellbeing
+    \item address depression through connection and purpose
+    \item encourage reciprocity and mutual aid
+    \item create safe, trusted community interaction
+\end{itemize}
+
+\subsection{Product Vision}
+To build a trusted digital ecosystem where people can both \textbf{give help} and \textbf{get help}, while fostering emotional wellbeing, fairness, safety, and meaningful human connection.
+
+\subsection{Mission Statement}
+Ghmera helps people give help and get help easily, safely, and meaningfully.
+
+\section{Problem Statement}
+
+Many existing platforms do not solve human support needs properly:
+\begin{itemize}[leftmargin=1.5em]
+    \item social media is broad, noisy, and not action-oriented
+    \item messaging platforms are fragmented and private, but not structured for matching support
+    \item local platforms often lack trust, strong UX, and reciprocity
+    \item many people need help but do not know where to find reliable support
+    \item many people are lonely or depressed and need connection, not just information
+\end{itemize}
+
+Ghmera addresses these problems by combining:
+\begin{itemize}[leftmargin=1.5em]
+    \item structured help requests
+    \item helper availability
+    \item smart matching
+    \item trust and verification
+    \item reciprocity rules
+    \item mental wellbeing support
+    \item strong safety and moderation systems
+\end{itemize}
+
+\section{Core User Types}
+
+\subsection{Requester}
+A person who needs help and creates a help request.
+
+\subsection{Helper}
+A person willing to provide help to others.
+
+\subsection{Hybrid User}
+A person who can both request help and offer help.
+
+\subsection{Admin / Moderator}
+A person or internal team responsible for trust, safety, moderation, escalations, disputes, and policy enforcement.
+
+\section{Core Product Principles}
+
+The development team should build the platform with the following principles:
+
+\begin{enumerate}[leftmargin=1.8em]
+    \item \textbf{Help first} --- the central workflow is give help / get help.
+    \item \textbf{Trust centered} --- identity, verification, and accountability matter.
+    \item \textbf{Safety by design} --- both parties must be protected.
+    \item \textbf{Reciprocity matters} --- the system should encourage users to both receive and give help.
+    \item \textbf{Privacy aware} --- personal information should be exposed gradually and only when needed.
+    \item \textbf{Useful over noisy} --- the app should enable action, not endless scrolling.
+    \item \textbf{Human wellbeing focused} --- the platform should address emotional isolation and depression through meaningful connection.
+    \item \textbf{Scalable architecture} --- the product should support future growth without needing a full rebuild.
+\end{enumerate}
+
+\section{Full Feature Documentation}
+
+\subsection{Authentication and Identity System}
+
+\subsubsection{Purpose}
+To create secure user accounts and reduce fake accounts, fraud, and impersonation.
+
+\subsubsection{Required Features}
+\begin{itemize}[leftmargin=1.5em]
+    \item email sign up and login
+    \item phone number verification
+    \item Google sign in
+    \item Apple sign in
+    \item password reset
+    \item session persistence
+    \item session/device management
+    \item optional two-factor authentication
+\end{itemize}
+
+\subsubsection{Verification Levels}
+\begin{itemize}[leftmargin=1.5em]
+    \item email verified
+    \item phone verified
+    \item ID verified
+    \item trusted helper
+\end{itemize}
+
+\subsection{User Profile System}
+
+\subsubsection{Profile Fields}
+\begin{itemize}[leftmargin=1.5em]
+    \item full name or display name
+    \item profile photo
+    \item short bio
+    \item city
+    \item area / neighborhood
+    \item help categories user can provide
+    \item help categories user commonly requests
+    \item availability status
+    \item service radius
+    \item completed help count
+    \item received help count
+    \item trust score
+    \item ratings / reviews summary
+    \item verification badges
+\end{itemize}
+
+\subsubsection{Profile Actions}
+\begin{itemize}[leftmargin=1.5em]
+    \item edit profile
+    \item set availability on/off
+    \item update help categories
+    \item manage privacy settings
+    \item block/report users
+\end{itemize}
+
+\subsection{Help Request Module}
+
+\subsubsection{Purpose}
+This is the main feature of the platform. A user who needs help should be able to create a request quickly and clearly.
+
+\subsubsection{Core Features}
+\begin{itemize}[leftmargin=1.5em]
+    \item create a new help request
+    \item classify request by category
+    \item set urgency level
+    \item set time preference or availability window
+    \item set approximate location
+    \item attach media if necessary
+    \item submit request for matching
+\end{itemize}
+
+\subsubsection{Help Request Fields}
+\begin{itemize}[leftmargin=1.5em]
+    \item request title
+    \item detailed description
+    \item category
+    \item urgency (low / medium / high)
+    \item location
+    \item preferred time
+    \item image attachment (optional)
+    \item public or restricted visibility
+\end{itemize}
+
+\subsubsection{Example Categories}
+\begin{itemize}[leftmargin=1.5em]
+    \item errands
+    \item transportation
+    \item study help
+    \item technical support
+    \item emotional support
+    \item prayer / spiritual support
+    \item childcare
+    \item elderly support
+    \item moving help
+    \item information / advice
+    \item food support
+    \item emergency non-medical support
+\end{itemize}
+
+\subsection{Help Offer Module}
+
+\subsubsection{Purpose}
+To allow users who want to help others to make themselves available to relevant requests.
+
+\subsubsection{Core Features}
+\begin{itemize}[leftmargin=1.5em]
+    \item helper can toggle availability on/off
+    \item select help categories they can provide
+    \item choose service radius or region
+    \item receive relevant requests
+    \item accept or decline requests
+    \item manage active help interactions
+\end{itemize}
+
+\subsection{Matching Engine}
+
+\subsubsection{Purpose}
+To intelligently connect requesters with helpers.
+
+\subsubsection{Matching Factors}
+\begin{itemize}[leftmargin=1.5em]
+    \item category fit
+    \item helper availability
+    \item location proximity
+    \item urgency of request
+    \item trust level / verification status
+    \item rating history
+    \item prior reports or safety restrictions
+    \item helper reciprocity and activity status
+\end{itemize}
+
+\subsubsection{Matching Output Options}
+\begin{itemize}[leftmargin=1.5em]
+    \item direct one-to-one suggested match
+    \item ranked helper candidates
+    \item broadcast request to eligible helpers
+\end{itemize}
+
+\subsection{Help Lifecycle Management}
+
+\subsubsection{Purpose}
+To track every help interaction from beginning to end.
+
+\subsubsection{Statuses}
+\begin{itemize}[leftmargin=1.5em]
+    \item open
+    \item matching
+    \item matched
+    \item accepted
+    \item in progress
+    \item completed
+    \item canceled
+    \item reported
+    \item disputed
+\end{itemize}
+
+\subsubsection{Rules}
+\begin{itemize}[leftmargin=1.5em]
+    \item all major actions should be logged
+    \item completion should require confirmation logic
+    \item disputed completions should go to admin review
+\end{itemize}
+
+\subsection{Messaging System}
+
+\subsubsection{Purpose}
+To allow matched users to communicate safely without immediately exposing personal contact details.
+
+\subsubsection{MVP Features}
+\begin{itemize}[leftmargin=1.5em]
+    \item in-app text chat
+    \item message notifications
+    \item message requests
+    \item block user
+    \item mute user
+    \item report user
+\end{itemize}
+
+\subsubsection{Privacy Rules}
+\begin{itemize}[leftmargin=1.5em]
+    \item phone numbers and emails should be hidden by default
+    \item full identity exposure should happen gradually
+    \item personal contact sharing should only happen after match acceptance and consent
+\end{itemize}
+
+\subsection{Reciprocity System}
+
+\subsubsection{Purpose}
+To prevent one-sided platform usage and preserve Ghmera as a mutual help ecosystem.
+
+\subsubsection{Core Rule}
+A user who keeps receiving help without giving help should eventually be restricted from requesting more help until they contribute by helping others.
+
+\subsubsection{Basic Logic}
+\begin{verbatim}
+help_balance = help_given_count - help_received_count
+\end{verbatim}
+
+The user must maintain:
+\begin{verbatim}
+help_balance >= -5
+\end{verbatim}
+
+\subsubsection{Enforcement}
+If a user receives too much help without contributing:
+\begin{itemize}[leftmargin=1.5em]
+    \item they are blocked from creating new help requests
+    \item they are encouraged to offer help to others
+    \item they may browse, message, and help others
+\end{itemize}
+
+\subsubsection{Example User Message}
+``You have received support from the community. To keep Ghmera fair and strong, please help someone else before requesting more help.''
+
+\subsubsection{Exceptions}
+\begin{itemize}[leftmargin=1.5em]
+    \item vulnerable users
+    \item users with disabilities
+    \item emergency needs
+    \item admin override cases
+\end{itemize}
+
+\subsubsection{Anti-Gaming Measures}
+\begin{itemize}[leftmargin=1.5em]
+    \item no fake completion loops
+    \item repeated helper-requester pairs should be monitored
+    \item low-quality help should not count
+    \item suspicious rapid completions should be flagged
+\end{itemize}
+
+\subsection{Ratings and Reviews}
+
+\subsubsection{Purpose}
+To build trust and accountability after each completed help interaction.
+
+\subsubsection{Review Categories}
+\begin{itemize}[leftmargin=1.5em]
+    \item helpfulness
+    \item respectfulness
+    \item safety
+    \item reliability
+    \item accuracy of request / response
+\end{itemize}
+
+\subsubsection{Rules}
+\begin{itemize}[leftmargin=1.5em]
+    \item one review per interaction
+    \item both parties can review
+    \item abusive reviews should be moderated
+    \item suspicious rating patterns should be flagged
+\end{itemize}
+
+\subsection{Trust and Safety System}
+
+\subsubsection{Purpose}
+To protect both requesters and helpers.
+
+\subsubsection{Core Features}
+\begin{itemize}[leftmargin=1.5em]
+    \item report user
+    \item report request
+    \item report chat
+    \item block user
+    \item mute user
+    \item trust score
+    \item moderation queue
+    \item safety restriction logic
+\end{itemize}
+
+\subsubsection{Report Categories}
+\begin{itemize}[leftmargin=1.5em]
+    \item scam / fraud
+    \item harassment
+    \item unsafe conduct
+    \item fake request
+    \item fake offer
+    \item inappropriate language
+    \item extortion
+    \item no-show
+    \item impersonation
+\end{itemize}
+
+\subsection{Security Features Protecting Both Parties}
+
+\subsubsection{Identity Protection}
+\begin{itemize}[leftmargin=1.5em]
+    \item email verification required
+    \item phone verification required
+    \item optional government ID verification
+    \item trusted badge system
+\end{itemize}
+
+\subsubsection{Communication Protection}
+\begin{itemize}[leftmargin=1.5em]
+    \item in-app chat first
+    \item no forced off-platform communication
+    \item suspicious language detection
+    \item block and report tools
+\end{itemize}
+
+\subsubsection{High-Risk Category Controls}
+High-risk categories should require stronger protections. Examples:
+\begin{itemize}[leftmargin=1.5em]
+    \item childcare
+    \item elderly support
+    \item home visits
+    \item late-night support
+    \item money-related requests
+\end{itemize}
+
+Additional safeguards:
+\begin{itemize}[leftmargin=1.5em]
+    \item stronger verification
+    \item stricter moderation
+    \item more limited identity exposure
+    \item safety prompts and check-ins
+\end{itemize}
+
+\subsubsection{Emergency Features}
+\begin{itemize}[leftmargin=1.5em]
+    \item panic button
+    \item ``I feel unsafe'' prompt
+    \item session safety check-in
+    \item ability to share session details with trusted contact
+\end{itemize}
+
+\subsection{Location and Privacy System}
+
+\subsubsection{Purpose}
+To use location relevance while protecting user privacy.
+
+\subsubsection{Rules}
+\begin{itemize}[leftmargin=1.5em]
+    \item approximate location shown at first
+    \item exact location hidden until needed
+    \item exact address only shared after match and consent
+    \item public meeting option should exist
+    \item unnecessary location history should not be stored
+\end{itemize}
+
+\subsection{Depression and Emotional Support Features}
+
+\subsubsection{Purpose}
+To help reduce depression, loneliness, and emotional isolation by building structured support into the platform.
+
+\subsubsection{Feature Option 1: ``I Need Someone to Talk To'' Mode}
+A dedicated support request type for emotional support.
+
+Features:
+\begin{itemize}[leftmargin=1.5em]
+    \item user chooses emotional support category
+    \item matched with listeners or peer supporters
+    \item non-clinical support disclaimer
+    \item structured text prompts
+\end{itemize}
+
+\subsubsection{Feature Option 2: Daily Check-In System}
+A simple emotional wellbeing tracker.
+
+Examples:
+\begin{itemize}[leftmargin=1.5em]
+    \item good
+    \item okay
+    \item struggling
+    \item not okay
+\end{itemize}
+
+If user selects struggling or not okay:
+\begin{itemize}[leftmargin=1.5em]
+    \item suggest talking to someone
+    \item suggest requesting help
+    \item suggest joining a support circle
+\end{itemize}
+
+\subsubsection{Feature Option 3: Help-to-Heal Engine}
+Helping others can support mental wellbeing and increase purpose.
+
+Features:
+\begin{itemize}[leftmargin=1.5em]
+    \item suggest simple ways to help others
+    \item recommend low-pressure tasks
+    \item nudge isolated users to participate positively
+\end{itemize}
+
+\subsubsection{Feature Option 4: Support Circles}
+Small groups for shared support and belonging.
+
+Examples:
+\begin{itemize}[leftmargin=1.5em]
+    \item new immigrant circle
+    \item single parent circle
+    \item young professional support circle
+    \item prayer and encouragement circle
+\end{itemize}
+
+\subsubsection{Feature Option 5: Crisis Detection and Escalation}
+The platform should detect serious distress signals and respond supportively.
+
+Possible triggers:
+\begin{itemize}[leftmargin=1.5em]
+    \item repeated ``not okay'' check-ins
+    \item self-harm language
+    \item severe emotional distress messages
+\end{itemize}
+
+Response options:
+\begin{itemize}[leftmargin=1.5em]
+    \item suggest support
+    \item suggest emotional help request
+    \item surface crisis resources
+    \item encourage trusted contact outreach
+\end{itemize}
+
+\textbf{Important:} Ghmera is not a therapy or emergency medical platform. It should provide peer support, connection, and guided escalation to proper resources when necessary.
+
+\subsection{Notification System}
+
+\subsubsection{Notification Types}
+\begin{itemize}[leftmargin=1.5em]
+    \item match found
+    \item new message
+    \item request accepted
+    \item help completed
+    \item report update
+    \item safety alert
+    \item reciprocity warning
+    \item emotional check-in reminder
+\end{itemize}
+
+\subsection{Admin Dashboard}
+
+\subsubsection{Admin Capabilities}
+\begin{itemize}[leftmargin=1.5em]
+    \item view users
+    \item suspend or ban users
+    \item review reports
+    \item remove harmful content
+    \item resolve disputes
+    \item override reciprocity limits
+    \item assign trust or restriction flags
+\end{itemize}
+
+\subsubsection{Dashboard Metrics}
+\begin{itemize}[leftmargin=1.5em]
+    \item total users
+    \item daily active users
+    \item help requests created
+    \item help requests completed
+    \item help given vs help received ratios
+    \item reports count
+    \item high-risk interactions
+    \item emotional support usage
+\end{itemize}
+
+\section{Data Models}
+
+\subsection{User}
+\begin{itemize}[leftmargin=1.5em]
+    \item id
+    \item name
+    \item email
+    \item phone
+    \item profile photo
+    \item city
+    \item area
+    \item verification status
+    \item trust score
+    \item availability
+    \item help categories
+    \item help\_given\_count
+    \item help\_received\_count
+    \item help\_balance
+    \item restriction status
+\end{itemize}
+
+\subsection{HelpRequest}
+\begin{itemize}[leftmargin=1.5em]
+    \item id
+    \item requester\_id
+    \item title
+    \item description
+    \item category
+    \item urgency
+    \item location
+    \item preferred time
+    \item status
+    \item created\_at
+\end{itemize}
+
+\subsection{HelpMatch}
+\begin{itemize}[leftmargin=1.5em]
+    \item id
+    \item requester\_id
+    \item helper\_id
+    \item request\_id
+    \item status
+    \item accepted\_at
+    \item completed\_at
+\end{itemize}
+
+\subsection{MessageThread}
+\begin{itemize}[leftmargin=1.5em]
+    \item id
+    \item request\_id
+    \item created\_at
+\end{itemize}
+
+\subsection{Message}
+\begin{itemize}[leftmargin=1.5em]
+    \item id
+    \item thread\_id
+    \item sender\_id
+    \item content
+    \item created\_at
+\end{itemize}
+
+\subsection{Review}
+\begin{itemize}[leftmargin=1.5em]
+    \item id
+    \item match\_id
+    \item reviewer\_id
+    \item reviewee\_id
+    \item rating
+    \item feedback
+    \item created\_at
+\end{itemize}
+
+\subsection{Report}
+\begin{itemize}[leftmargin=1.5em]
+    \item id
+    \item reporter\_id
+    \item target\_type
+    \item target\_id
+    \item reason
+    \item status
+    \item created\_at
+\end{itemize}
+
+\subsection{MoodCheckIn}
+\begin{itemize}[leftmargin=1.5em]
+    \item id
+    \item user\_id
+    \item mood\_level
+    \item created\_at
+\end{itemize}
+
+\section{MVP Scope}
+
+\subsection{Must-Have Features}
+\begin{itemize}[leftmargin=1.5em]
+    \item authentication
+    \item phone verification
+    \item user profiles
+    \item help request module
+    \item helper availability
+    \item matching engine
+    \item in-app messaging
+    \item reciprocity enforcement
+    \item ratings and reviews
+    \item report and block features
+    \item notifications
+    \item admin moderation basics
+\end{itemize}
+
+\subsection{Strongly Recommended for MVP}
+\begin{itemize}[leftmargin=1.5em]
+    \item emotional support mode
+    \item daily check-in
+    \item basic trust score
+    \item high-risk category restrictions
+\end{itemize}
+
+\subsection{Future Features}
+\begin{itemize}[leftmargin=1.5em]
+    \item AI matching improvements
+    \item advanced trust scoring
+    \item support circles
+    \item smart anomaly detection
+    \item volunteer campaigns
+    \item city-based dashboards
+\end{itemize}
+
+\section{Non-Functional Requirements}
+
+\begin{itemize}[leftmargin=1.5em]
+    \item secure authentication and data protection
+    \item scalable backend architecture
+    \item strong logging and monitoring
+    \item privacy-conscious location handling
+    \item fast performance on mobile devices
+    \item reliable push notifications
+    \item audit trail for moderation and disputes
+    \item responsive and clean UI/UX
+\end{itemize}
+
+\section{Recommended Technology Stack}
+
+\subsection{Frontend}
+Flutter for Android and iOS from one codebase
+
+\subsection{Backend}
+Node.js with Express or NestJS
+
+\subsection{Database}
+PostgreSQL
+
+\subsection{Authentication}
+Firebase Auth, Supabase Auth, or custom JWT auth
+
+\subsection{Storage}
+AWS S3, Firebase Storage, or Supabase Storage
+
+\subsection{Notifications}
+Firebase Cloud Messaging
+
+\subsection{Admin Panel}
+React-based admin dashboard
+
+\subsection{Analytics}
+PostHog, Mixpanel, or Firebase Analytics
+
+\section{Build Phases}
+
+\subsection{Phase 1 --- Core Platform}
+\begin{itemize}[leftmargin=1.5em]
+    \item authentication
+    \item profiles
+    \item help requests
+    \item help offers
+    \item matching
+    \item messaging
+\end{itemize}
+
+\subsection{Phase 2 --- Trust and Reciprocity}
+\begin{itemize}[leftmargin=1.5em]
+    \item ratings
+    \item reviews
+    \item reporting
+    \item reciprocity engine
+    \item restriction logic
+\end{itemize}
+
+\subsection{Phase 3 --- Safety and Emotional Support}
+\begin{itemize}[leftmargin=1.5em]
+    \item emotional support mode
+    \item daily check-ins
+    \item crisis escalation prompts
+    \item high-risk category controls
+\end{itemize}
+
+\subsection{Phase 4 --- Advanced Intelligence}
+\begin{itemize}[leftmargin=1.5em]
+    \item AI-assisted matching
+    \item anomaly detection
+    \item advanced trust scoring
+    \item support circles
+\end{itemize}
+
+\section{Success Metrics}
+
+\begin{itemize}[leftmargin=1.5em]
+    \item number of help requests created
+    \item number of help requests completed
+    \item average time to match
+    \item percentage of users who both give and receive help
+    \item reciprocity compliance rate
+    \item user retention after 7 days and 30 days
+    \item emotional support usage
+    \item report resolution time
+    \item trust score distribution
+\end{itemize}
+
+\section{Final Product Statement}
+
+Ghmera, owned by \textbf{Peatech}, is a secure, trust-driven help and support matching platform designed to help people give help and get help. It protects both the requester and the helper, enforces reciprocity to maintain fairness, and integrates emotional support systems to reduce loneliness, depression, and isolation. The platform should be built as a scalable mutual aid ecosystem, not merely a transactional service platform.
+
+\section{Short Founder Note for the Programming Department}
+
+The programming department should understand that Ghmera is not just another social app. Its primary job is to let users request help and get matched with users who are willing to help. The platform must be designed around trust, reciprocity, safety, emotional wellbeing, and accountability. Every feature should strengthen the core give-help/get-help system while protecting both parties and encouraging real community participation.
+
+\end{document}

@@ -1,0 +1,738 @@
+{
+    "_meta": {
+        "currentUserEmail": "amara@ghmera.app"
+    },
+    "amara@ghmera.app": {
+        "user": {
+            "id": "user_current",
+            "fullName": "Amara Nwosu",
+            "email": "amara@ghmera.app",
+            "phone": "+233 20 555 0147",
+            "shortBio": "Hybrid user focused on emotional support, errands, and community recovery requests.",
+            "city": "Accra",
+            "area": "East Legon",
+            "verificationBadges": [
+                "emailVerified",
+                "phoneVerified"
+            ],
+            "trustScore": 88,
+            "availability": true,
+            "helpCategoriesProvided": [
+                "emotionalSupport",
+                "errands",
+                "studyHelp",
+                "foodSupport"
+            ],
+            "helpCategoriesRequested": [
+                "technicalSupport",
+                "transportation"
+            ],
+            "serviceRadiusKm": 7,
+            "helpGivenCount": 6,
+            "helpReceivedCount": 10,
+            "restrictionStatus": "warning",
+            "averageRating": 4.7,
+            "completedHelpCount": 9,
+            "receivedHelpCount": 10,
+            "blockedUserIds": [
+                "user_spam"
+            ],
+            "mutedUserIds": [
+                "user_muted"
+            ],
+            "privacySettings": {
+                "showApproximateLocation": true,
+                "sharePhoneAfterAcceptance": false,
+                "shareEmailAfterAcceptance": false,
+                "allowSupportCircleInvites": true,
+                "allowMessageRequests": true
+            },
+            "twoFactorEnabled": true,
+            "sessions": [
+                {
+                    "id": "session_1",
+                    "label": "Pixel 8 Pro",
+                    "lastActive": "2026-04-07T11:52:00Z",
+                    "isCurrent": true
+                },
+                {
+                    "id": "session_2",
+                    "label": "Chrome on Windows",
+                    "lastActive": "2026-04-07T06:00:00Z",
+                    "isCurrent": false
+                }
+            ]
+        },
+        "requests": [
+            {
+                "id": "request_1",
+                "requesterId": "user_current",
+                "title": "Need help setting up my laptop for remote classes",
+                "description": "I need someone to help install Zoom, connect my printer, and back up class notes before tomorrow morning.",
+                "category": "technicalSupport",
+                "urgency": "medium",
+                "location": "East Legon",
+                "preferredTime": "Today, 6:00 PM",
+                "visibility": "restricted",
+                "attachmentLabel": "Setup checklist screenshot",
+                "status": "matching",
+                "createdAt": "2026-04-07T09:00:00Z",
+                "suggestedHelperIds": [
+                    "user_daniel",
+                    "user_zainab"
+                ],
+                "actionLog": [
+                    {
+                        "actorId": "user_current",
+                        "action": "Request created",
+                        "createdAt": "2026-04-07T09:00:00Z"
+                    },
+                    {
+                        "actorId": "user_current",
+                        "action": "Matching engine started ranking helpers",
+                        "createdAt": "2026-04-07T09:15:00Z"
+                    }
+                ]
+            },
+            {
+                "id": "request_2",
+                "requesterId": "user_current",
+                "title": "Need a safe ride to a clinic follow-up",
+                "description": "I have an early morning appointment and would prefer a trusted helper who can stay until check-in is done.",
+                "category": "transportation",
+                "urgency": "high",
+                "location": "Osu",
+                "preferredTime": "Tomorrow, 8:00 AM",
+                "visibility": "restricted",
+                "status": "accepted",
+                "createdAt": "2026-04-06T10:00:00Z",
+                "acceptedHelperId": "user_kofi",
+                "safetyCheckInRequired": true,
+                "contactConsentFromRequester": true,
+                "contactConsentFromHelper": true,
+                "actionLog": [
+                    {
+                        "actorId": "user_current",
+                        "action": "Request created",
+                        "createdAt": "2026-04-06T10:00:00Z"
+                    },
+                    {
+                        "actorId": "user_kofi",
+                        "action": "Helper accepted request",
+                        "createdAt": "2026-04-06T10:40:00Z"
+                    }
+                ]
+            }
+        ],
+        "notifications": [
+            {
+                "id": "notification_1",
+                "userId": "user_current",
+                "type": "matchFound",
+                "title": "Two helpers fit your tech request",
+                "message": "Daniel and Zainab were ranked for your laptop setup request.",
+                "createdAt": "2026-04-07T11:30:00Z"
+            },
+            {
+                "id": "notification_2",
+                "userId": "user_current",
+                "type": "newMessage",
+                "title": "Daniel sent a new message",
+                "message": "He is asking for the printer model before the session starts.",
+                "createdAt": "2026-04-07T11:40:00Z"
+            },
+            {
+                "id": "notification_3",
+                "userId": "user_current",
+                "type": "safetyAlert",
+                "title": "Safety check-in scheduled",
+                "message": "Your clinic ride request will trigger a check-in before and after the trip.",
+                "createdAt": "2026-04-07T10:00:00Z"
+            },
+            {
+                "id": "notification_4",
+                "userId": "user_current",
+                "type": "reciprocityWarning",
+                "title": "You are close to the reciprocity floor",
+                "message": "Offer one more help interaction soon to stay comfortably above -5.",
+                "createdAt": "2026-04-07T08:00:00Z"
+            },
+            {
+                "id": "notification_5",
+                "userId": "user_current",
+                "type": "emotionalCheckInReminder",
+                "title": "Daily wellbeing check-in",
+                "message": "If you are struggling, the app can route you into a listener match or support circle.",
+                "createdAt": "2026-04-07T05:00:00Z"
+            },
+            {
+                "id": "notification_6",
+                "userId": "user_current",
+                "type": "reportUpdate",
+                "title": "Your report is being reviewed",
+                "message": "Moderation moved your chat safety report into investigation.",
+                "createdAt": "2026-04-07T04:00:00Z",
+                "isRead": true
+            }
+        ],
+        "moodCheckIns": [
+            {
+                "id": "mood_1",
+                "userId": "user_current",
+                "moodLevel": "struggling",
+                "createdAt": "2026-04-07T10:00:00Z",
+                "note": "Surface emotional support request and support circles."
+            },
+            {
+                "id": "mood_2",
+                "userId": "user_current",
+                "moodLevel": "okay",
+                "createdAt": "2026-04-06T12:00:00Z",
+                "note": "Completed a small helping task yesterday."
+            },
+            {
+                "id": "mood_3",
+                "userId": "user_current",
+                "moodLevel": "good",
+                "createdAt": "2026-04-05T12:00:00Z"
+            }
+        ]
+    },
+    "daniel@ghmera.app": {
+        "user": {
+            "id": "user_daniel",
+            "fullName": "Daniel Owusu",
+            "email": "daniel@ghmera.app",
+            "phone": "+233 24 310 5521",
+            "shortBio": "Device setup, software fixes, and digital literacy support.",
+            "city": "Accra",
+            "area": "Dzorwulu",
+            "verificationBadges": [
+                "emailVerified",
+                "phoneVerified",
+                "idVerified",
+                "trustedHelper"
+            ],
+            "trustScore": 95,
+            "availability": true,
+            "helpCategoriesProvided": [
+                "technicalSupport",
+                "informationAdvice",
+                "studyHelp"
+            ],
+            "helpCategoriesRequested": [
+                "transportation"
+            ],
+            "serviceRadiusKm": 12,
+            "helpGivenCount": 21,
+            "helpReceivedCount": 3,
+            "restrictionStatus": "clear",
+            "averageRating": 4.9,
+            "completedHelpCount": 24,
+            "receivedHelpCount": 3
+        }
+    },
+    "kofi@ghmera.app": {
+        "user": {
+            "id": "user_kofi",
+            "fullName": "Kofi Mensah",
+            "email": "kofi@ghmera.app",
+            "phone": "+233 27 988 1200",
+            "shortBio": "Reliable transport, errands, and elder accompaniment.",
+            "city": "Accra",
+            "area": "Osu",
+            "verificationBadges": [
+                "emailVerified",
+                "phoneVerified",
+                "idVerified",
+                "trustedHelper"
+            ],
+            "trustScore": 91,
+            "availability": true,
+            "helpCategoriesProvided": [
+                "transportation",
+                "errands",
+                "elderlySupport"
+            ],
+            "helpCategoriesRequested": [
+                "foodSupport"
+            ],
+            "serviceRadiusKm": 15,
+            "helpGivenCount": 18,
+            "helpReceivedCount": 4,
+            "restrictionStatus": "clear",
+            "averageRating": 4.8,
+            "completedHelpCount": 22,
+            "receivedHelpCount": 4
+        }
+    },
+    "zainab@ghmera.app": {
+        "user": {
+            "id": "user_zainab",
+            "fullName": "Zainab Bello",
+            "email": "zainab@ghmera.app",
+            "phone": "+233 54 881 0043",
+            "shortBio": "Peer listener, prayer support, and study accountability partner.",
+            "city": "Accra",
+            "area": "Madina",
+            "verificationBadges": [
+                "emailVerified",
+                "phoneVerified",
+                "trustedHelper"
+            ],
+            "trustScore": 90,
+            "availability": true,
+            "helpCategoriesProvided": [
+                "emotionalSupport",
+                "prayerSupport",
+                "studyHelp"
+            ],
+            "helpCategoriesRequested": [
+                "informationAdvice"
+            ],
+            "serviceRadiusKm": 10,
+            "helpGivenCount": 16,
+            "helpReceivedCount": 5,
+            "restrictionStatus": "clear",
+            "averageRating": 4.8,
+            "completedHelpCount": 18,
+            "receivedHelpCount": 5
+        },
+        "requests": [
+            {
+                "id": "request_6",
+                "requesterId": "user_zainab",
+                "title": "Prayer and encouragement circle this weekend",
+                "description": "Looking for a few people who can join a small support circle for prayer, encouragement, and follow-up.",
+                "category": "prayerSupport",
+                "urgency": "low",
+                "location": "Madina",
+                "preferredTime": "Sunday, 4:00 PM",
+                "visibility": "public",
+                "status": "open",
+                "createdAt": "2026-04-05T12:00:00Z",
+                "emotionalSupportMode": true,
+                "actionLog": [
+                    {
+                        "actorId": "user_zainab",
+                        "action": "Support circle request created",
+                        "createdAt": "2026-04-05T12:00:00Z"
+                    }
+                ]
+            }
+        ]
+    },
+    "ama@ghmera.app": {
+        "user": {
+            "id": "user_ama",
+            "fullName": "Ama Boateng",
+            "email": "ama@ghmera.app",
+            "phone": "+233 55 190 6630",
+            "shortBio": "Single parent asking for flexible neighborhood support.",
+            "city": "Accra",
+            "area": "Labone",
+            "verificationBadges": [
+                "emailVerified",
+                "phoneVerified"
+            ],
+            "trustScore": 82,
+            "availability": false,
+            "helpCategoriesProvided": [
+                "foodSupport",
+                "childcare"
+            ],
+            "helpCategoriesRequested": [
+                "emotionalSupport",
+                "foodSupport"
+            ],
+            "serviceRadiusKm": 5,
+            "helpGivenCount": 3,
+            "helpReceivedCount": 8,
+            "restrictionStatus": "warning",
+            "averageRating": 4.4,
+            "completedHelpCount": 5,
+            "receivedHelpCount": 8
+        },
+        "requests": [
+            {
+                "id": "request_3",
+                "requesterId": "user_ama",
+                "title": "I need someone to talk to tonight",
+                "description": "I am overwhelmed and would like a calm peer supporter to check in with me by chat for the next hour.",
+                "category": "emotionalSupport",
+                "urgency": "high",
+                "location": "Labone",
+                "preferredTime": "Tonight, 9:00 PM",
+                "visibility": "restricted",
+                "status": "inProgress",
+                "createdAt": "2026-04-07T07:00:00Z",
+                "acceptedHelperId": "user_current",
+                "emotionalSupportMode": true,
+                "suggestedHelperIds": [
+                    "user_current",
+                    "user_zainab"
+                ],
+                "actionLog": [
+                    {
+                        "actorId": "user_ama",
+                        "action": "Emotional support request created",
+                        "createdAt": "2026-04-07T07:00:00Z"
+                    },
+                    {
+                        "actorId": "user_current",
+                        "action": "Peer supporter accepted",
+                        "createdAt": "2026-04-07T07:40:00Z"
+                    }
+                ]
+            },
+            {
+                "id": "request_4",
+                "requesterId": "user_ama",
+                "title": "Need groceries for two days until payday",
+                "description": "Food staples or supermarket pickup would help. I can receive in a public location.",
+                "category": "foodSupport",
+                "urgency": "high",
+                "location": "Labone",
+                "preferredTime": "This evening",
+                "visibility": "public",
+                "status": "matching",
+                "createdAt": "2026-04-07T02:00:00Z",
+                "suggestedHelperIds": [
+                    "user_current"
+                ],
+                "actionLog": [
+                    {
+                        "actorId": "user_ama",
+                        "action": "Request created",
+                        "createdAt": "2026-04-07T02:00:00Z"
+                    }
+                ]
+            }
+        ]
+    },
+    "nana@ghmera.app": {
+        "user": {
+            "id": "user_nana",
+            "fullName": "Nana Badu",
+            "email": "nana@ghmera.app",
+            "phone": "+233 24 773 4412",
+            "shortBio": "Trusted elder care volunteer with daytime availability.",
+            "city": "Accra",
+            "area": "Airport Residential",
+            "verificationBadges": [
+                "emailVerified",
+                "phoneVerified",
+                "idVerified"
+            ],
+            "trustScore": 86,
+            "availability": false,
+            "helpCategoriesProvided": [
+                "elderlySupport",
+                "transportation",
+                "errands"
+            ],
+            "helpCategoriesRequested": [
+                "prayerSupport"
+            ],
+            "serviceRadiusKm": 11,
+            "helpGivenCount": 12,
+            "helpReceivedCount": 2,
+            "restrictionStatus": "clear",
+            "averageRating": 4.6,
+            "completedHelpCount": 15,
+            "receivedHelpCount": 2
+        },
+        "requests": [
+            {
+                "id": "request_5",
+                "requesterId": "user_nana",
+                "title": "Escort needed for an elderly home visit",
+                "description": "Need a verified helper to accompany an older adult for a short home visit and return trip.",
+                "category": "elderlySupport",
+                "urgency": "medium",
+                "location": "Airport Residential",
+                "preferredTime": "Saturday, 2:00 PM",
+                "visibility": "restricted",
+                "status": "open",
+                "createdAt": "2026-04-06T07:00:00Z",
+                "requiresHomeVisit": true,
+                "safetyCheckInRequired": true,
+                "actionLog": [
+                    {
+                        "actorId": "user_nana",
+                        "action": "High-risk request created with home visit flag",
+                        "createdAt": "2026-04-06T07:00:00Z"
+                    }
+                ]
+            }
+        ]
+    },
+    "_shared": {
+        "matches": [
+            {
+                "id": "match_1",
+                "requesterId": "user_current",
+                "helperId": "user_daniel",
+                "requestId": "request_1",
+                "status": "suggested",
+                "score": 96,
+                "reasons": [
+                    "Supports technical support",
+                    "Currently available within 12 km",
+                    "95 trust score",
+                    "Trusted helper badge"
+                ]
+            },
+            {
+                "id": "match_2",
+                "requesterId": "user_current",
+                "helperId": "user_zainab",
+                "requestId": "request_1",
+                "status": "broadcast",
+                "score": 82,
+                "reasons": [
+                    "Strong peer listener reputation",
+                    "Available for lightweight support",
+                    "90 trust score"
+                ]
+            },
+            {
+                "id": "match_3",
+                "requesterId": "user_ama",
+                "helperId": "user_current",
+                "requestId": "request_3",
+                "status": "accepted",
+                "score": 89,
+                "reasons": [
+                    "Emotional support category fit",
+                    "Available tonight",
+                    "Strong review history for respect and safety"
+                ],
+                "acceptedAt": "2026-04-07T07:40:00Z"
+            },
+            {
+                "id": "match_4",
+                "requesterId": "user_ama",
+                "helperId": "user_current",
+                "requestId": "request_4",
+                "status": "suggested",
+                "score": 78,
+                "reasons": [
+                    "Food support is one of your help categories",
+                    "You are active in the same city",
+                    "Requester is approaching reciprocity support needs"
+                ]
+            },
+            {
+                "id": "match_5",
+                "requesterId": "user_current",
+                "helperId": "user_kofi",
+                "requestId": "request_2",
+                "status": "accepted",
+                "score": 94,
+                "reasons": [
+                    "Transportation category fit",
+                    "Trusted helper badge",
+                    "ID verified for higher-trust travel support"
+                ],
+                "acceptedAt": "2026-04-06T10:40:00Z"
+            }
+        ],
+        "threads": [
+            {
+                "id": "thread_1",
+                "requestId": "request_1",
+                "participantIds": [
+                    "user_current",
+                    "user_daniel"
+                ],
+                "createdAt": "2026-04-07T09:30:00Z",
+                "lastMessageAt": "2026-04-07T11:40:00Z",
+                "messageRequestPending": false,
+                "contactSharedByIds": [
+                    "user_current"
+                ]
+            },
+            {
+                "id": "thread_2",
+                "requestId": "request_3",
+                "participantIds": [
+                    "user_current",
+                    "user_ama"
+                ],
+                "createdAt": "2026-04-07T08:00:00Z",
+                "lastMessageAt": "2026-04-07T11:48:00Z",
+                "messageRequestPending": false
+            },
+            {
+                "id": "thread_3",
+                "requestId": "request_4",
+                "participantIds": [
+                    "user_current",
+                    "user_ama"
+                ],
+                "createdAt": "2026-04-07T10:30:00Z",
+                "lastMessageAt": "2026-04-07T10:55:00Z",
+                "messageRequestPending": true
+            }
+        ],
+        "messages": [
+            {
+                "id": "message_1",
+                "threadId": "thread_1",
+                "senderId": "user_daniel",
+                "content": "I can handle the laptop setup tonight. Can you send the printer model first?",
+                "createdAt": "2026-04-07T11:25:00Z"
+            },
+            {
+                "id": "message_2",
+                "threadId": "thread_1",
+                "senderId": "user_current",
+                "content": "Yes, and thank you. I have only shared my phone after acceptance for now.",
+                "createdAt": "2026-04-07T11:40:00Z"
+            },
+            {
+                "id": "message_3",
+                "threadId": "thread_2",
+                "senderId": "user_ama",
+                "content": "Thank you for staying online. I am calmer now than I was an hour ago.",
+                "createdAt": "2026-04-07T11:42:00Z"
+            },
+            {
+                "id": "message_4",
+                "threadId": "thread_2",
+                "senderId": "user_current",
+                "content": "I am here with you. If you want more support after this, I can help you request a follow-up check-in.",
+                "createdAt": "2026-04-07T11:48:00Z"
+            },
+            {
+                "id": "message_5",
+                "threadId": "thread_3",
+                "senderId": "user_ama",
+                "content": "Message request: I can pick up at a public location near Labone Junction.",
+                "createdAt": "2026-04-07T10:55:00Z"
+            }
+        ],
+        "reviews": [
+            {
+                "id": "review_1",
+                "matchId": "match_5",
+                "reviewerId": "user_current",
+                "revieweeId": "user_kofi",
+                "helpfulness": 5,
+                "respectfulness": 5,
+                "safety": 5,
+                "reliability": 5,
+                "accuracy": 4,
+                "feedback": "Clear communication, safe transport, and punctual arrival.",
+                "createdAt": "2026-04-06T12:00:00Z"
+            },
+            {
+                "id": "review_2",
+                "matchId": "match_3",
+                "reviewerId": "user_ama",
+                "revieweeId": "user_current",
+                "helpfulness": 5,
+                "respectfulness": 5,
+                "safety": 5,
+                "reliability": 4,
+                "accuracy": 5,
+                "feedback": "Very calm, respectful, and stayed within the platform safety prompts.",
+                "createdAt": "2026-04-06T22:00:00Z"
+            },
+            {
+                "id": "review_3",
+                "matchId": "match_6",
+                "reviewerId": "user_daniel",
+                "revieweeId": "user_current",
+                "helpfulness": 4,
+                "respectfulness": 5,
+                "safety": 5,
+                "reliability": 4,
+                "accuracy": 4,
+                "feedback": "Shared details carefully and stayed inside the protected workflow.",
+                "createdAt": "2026-04-04T12:00:00Z"
+            }
+        ],
+        "reports": [
+            {
+                "id": "report_1",
+                "reporterId": "user_current",
+                "targetType": "chat",
+                "targetId": "thread_9",
+                "reason": "Inappropriate language",
+                "details": "Automated moderation flagged repeated pressure to move off-platform.",
+                "status": "investigating",
+                "createdAt": "2026-04-07T04:00:00Z",
+                "assignedModeratorId": "mod_1"
+            },
+            {
+                "id": "report_2",
+                "reporterId": "user_zainab",
+                "targetType": "request",
+                "targetId": "request_10",
+                "reason": "Fake request",
+                "details": "Requester posted duplicate emergency support requests with conflicting details.",
+                "status": "open",
+                "createdAt": "2026-04-07T08:50:00Z"
+            }
+        ],
+        "supportCircles": [
+            {
+                "id": "circle_1",
+                "name": "New Immigrant Circle",
+                "description": "Weekly support for new arrivals navigating housing, jobs, and local systems.",
+                "tags": [
+                    "belonging",
+                    "orientation",
+                    "peer support"
+                ],
+                "memberIds": [
+                    "user_zainab",
+                    "user_ama"
+                ]
+            },
+            {
+                "id": "circle_2",
+                "name": "Single Parent Circle",
+                "description": "Low-pressure check-ins, food support coordination, and shared childcare tips.",
+                "tags": [
+                    "care",
+                    "practical help",
+                    "family"
+                ],
+                "memberIds": [
+                    "user_ama"
+                ]
+            },
+            {
+                "id": "circle_3",
+                "name": "Young Professional Support Circle",
+                "description": "Study, work, and burnout recovery support for early-career adults.",
+                "tags": [
+                    "career",
+                    "stress",
+                    "accountability"
+                ],
+                "memberIds": [
+                    "user_daniel",
+                    "user_current"
+                ]
+            },
+            {
+                "id": "circle_4",
+                "name": "Prayer and Encouragement Circle",
+                "description": "Faith-based peer support with gentle moderation and follow-up prompts.",
+                "tags": [
+                    "prayer",
+                    "encouragement",
+                    "check-ins"
+                ],
+                "memberIds": [
+                    "user_zainab",
+                    "user_current"
+                ]
+            }
+        ]
+    }
+}

@@ -1,0 +1,154 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
+
+import '../models/ghmera_models.dart';
+
+class UserFirestoreSyncService {
+  UserFirestoreSyncService({FirebaseFirestore? firestore, FirebaseAuth? auth})
+    : _firestore = firestore ?? FirebaseFirestore.instance,
+      _auth = auth ?? FirebaseAuth.instance;
+
+  static const String _trackerCollection = 'user_trackers';
+  static const String _usersSubcollection = 'users';
+  static const String _deviceUuidPrefsKey = 'ghmera_device_uuid';
+  static const Uuid _uuid = Uuid();
+
+  final FirebaseFirestore _firestore;
+  final FirebaseAuth _auth;
+
+  Future<void> syncUsers({
+    required List<UserEntity> users,
+    required String currentUserId,
+  }) async {
+    if (users.isEmpty || Firebase.apps.isEmpty) {
+      return;
+    }
+
+    try {
+      final deviceUuid = await _getOrCreateDeviceUuid();
+      final email = _auth.currentUser?.email?.trim().toLowerCase();
+      final isAuthenticated = email != null && email.isNotEmpty;
+
+      final trackerType = isAuthenticated ? 'email' : 'device_uuid';
+      final trackerId = isAuthenticated ? email : deviceUuid;
+      if (trackerId.isEmpty) {
+        return;
+      }
+
+      final trackerDocId = '${trackerType}_$trackerId';
+      final trackerRef = _firestore
+          .collection(_trackerCollection)
+          .doc(trackerDocId);
+
+      final batch = _firestore.batch();
+      batch.set(trackerRef, <String, dynamic>{
+        'trackerType': trackerType,
+        'trackerId': trackerId,
+        'authEmail': email,
+        'deviceUuid': deviceUuid,
+        'currentUserId': currentUserId,
+        'userCount': users.length,
+        'lastSyncedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      for (final user in users) {
+        batch.set(
+          trackerRef.collection(_usersSubcollection).doc(user.id),
+          <String, dynamic>{
+            ..._serializeUser(user),
+            'trackedBy': <String, dynamic>{
+              'type': trackerType,
+              'id': trackerId,
+            },
+            'lastSyncedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+
+      await batch.commit();
+    } catch (error, stackTrace) {
+      // Keep app functionality running if Firestore sync fails.
+      debugPrint('Firestore user sync failed: $error');
+      if (kDebugMode) {
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
+  }
+
+  Future<String> _getOrCreateDeviceUuid() async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getString(_deviceUuidPrefsKey);
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+
+    final generated = _uuid.v4();
+    await prefs.setString(_deviceUuidPrefsKey, generated);
+    return generated;
+  }
+
+  Map<String, dynamic> _serializeUser(UserEntity user) {
+    return <String, dynamic>{
+      'id': user.id,
+      'fullName': user.fullName,
+      'email': user.email,
+      'phone': user.phone,
+      'profilePhoto': user.profilePhoto,
+      'shortBio': user.shortBio,
+      'city': user.city,
+      'area': user.area,
+      'verificationBadges': user.verificationBadges
+          .map((badge) => badge.name)
+          .toList(),
+      'trustScore': user.trustScore,
+      'availability': user.availability,
+      'helpCategoriesProvided': user.helpCategoriesProvided
+          .map((category) => category.name)
+          .toList(),
+      'helpCategoriesRequested': user.helpCategoriesRequested
+          .map((category) => category.name)
+          .toList(),
+      'serviceRadiusKm': user.serviceRadiusKm,
+      'helpGivenCount': user.helpGivenCount,
+      'helpReceivedCount': user.helpReceivedCount,
+      'restrictionStatus': user.restrictionStatus.name,
+      'averageRating': user.averageRating,
+      'completedHelpCount': user.completedHelpCount,
+      'receivedHelpCount': user.receivedHelpCount,
+      'blockedUserIds': List<String>.from(user.blockedUserIds),
+      'mutedUserIds': List<String>.from(user.mutedUserIds),
+      'privacySettings': _serializePrivacySettings(user.privacySettings),
+      'twoFactorEnabled': user.twoFactorEnabled,
+      'isAdmin': user.isAdmin,
+      'vulnerableUser': user.vulnerableUser,
+      'hasDisability': user.hasDisability,
+      'adminOverrideReciprocity': user.adminOverrideReciprocity,
+      'sessions': user.sessions.map(_serializeSessionDevice).toList(),
+      'trustFlags': List<String>.from(user.trustFlags),
+    };
+  }
+
+  Map<String, dynamic> _serializePrivacySettings(PrivacySettings settings) {
+    return <String, dynamic>{
+      'showApproximateLocation': settings.showApproximateLocation,
+      'sharePhoneAfterAcceptance': settings.sharePhoneAfterAcceptance,
+      'shareEmailAfterAcceptance': settings.shareEmailAfterAcceptance,
+      'allowSupportCircleInvites': settings.allowSupportCircleInvites,
+      'allowMessageRequests': settings.allowMessageRequests,
+    };
+  }
+
+  Map<String, dynamic> _serializeSessionDevice(SessionDevice session) {
+    return <String, dynamic>{
+      'id': session.id,
+      'label': session.label,
+      'lastActive': session.lastActive.toIso8601String(),
+      'isCurrent': session.isCurrent,
+    };
+  }
+}

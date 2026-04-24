@@ -1,0 +1,1 @@
+{"functions":{"source":"functions","runtime":"python311"},"flutter":{"platforms":{"android":{"default":{"projectId":"ghmeraapp-aeb79","appId":"1:439222343527:android:5dd908dd9feb02611901c2","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"ghmeraapp-aeb79","configurations":{"ios":"1:439222343527:ios:495dcda1e27382581901c2"}}}}}}
