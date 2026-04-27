@@ -417,6 +417,8 @@ class UserEntity {
     this.verificationBadges = const <VerificationBadge>{},
     this.trustScore = 50,
     this.availability = true,
+    this.availabilityStartMinuteOfDay = -1,
+    this.availabilityEndMinuteOfDay = -1,
     this.helpCategoriesProvided = const <RequestCategory>[],
     this.helpCategoriesRequested = const <RequestCategory>[],
     this.serviceRadiusKm = 10,
@@ -451,6 +453,8 @@ class UserEntity {
   final Set<VerificationBadge> verificationBadges;
   final double trustScore;
   final bool availability;
+  final int availabilityStartMinuteOfDay;
+  final int availabilityEndMinuteOfDay;
   final List<RequestCategory> helpCategoriesProvided;
   final List<RequestCategory> helpCategoriesRequested;
   final double serviceRadiusKm;
@@ -473,6 +477,8 @@ class UserEntity {
   final List<SessionDevice> sessions;
   final List<String> trustFlags;
 
+  static const int _minutesPerDay = 24 * 60;
+
   int get helpBalance => helpGivenCount - helpReceivedCount;
 
   bool get canBypassReciprocity {
@@ -491,6 +497,40 @@ class UserEntity {
   bool get trustedHelper =>
       verificationBadges.contains(VerificationBadge.trustedHelper);
 
+  bool get hasAvailabilityWindow {
+    return availabilityStartMinuteOfDay >= 0 && availabilityEndMinuteOfDay >= 0;
+  }
+
+  bool isAvailableAt(DateTime dateTime) {
+    if (!availability) {
+      return false;
+    }
+
+    if (!hasAvailabilityWindow) {
+      return true;
+    }
+
+    final nowMinuteOfDay = dateTime.hour * 60 + dateTime.minute;
+    final start = availabilityStartMinuteOfDay;
+    final end = availabilityEndMinuteOfDay;
+
+    if (start >= _minutesPerDay || end >= _minutesPerDay) {
+      return true;
+    }
+
+    if (start == end) {
+      return true;
+    }
+
+    if (start < end) {
+      return nowMinuteOfDay >= start && nowMinuteOfDay < end;
+    }
+
+    return nowMinuteOfDay >= start || nowMinuteOfDay < end;
+  }
+
+  bool get isCurrentlyAvailable => isAvailableAt(DateTime.now());
+
   UserEntity copyWith({
     String? id,
     String? fullName,
@@ -503,6 +543,8 @@ class UserEntity {
     Set<VerificationBadge>? verificationBadges,
     double? trustScore,
     bool? availability,
+    int? availabilityStartMinuteOfDay,
+    int? availabilityEndMinuteOfDay,
     List<RequestCategory>? helpCategoriesProvided,
     List<RequestCategory>? helpCategoriesRequested,
     double? serviceRadiusKm,
@@ -537,6 +579,10 @@ class UserEntity {
       verificationBadges: verificationBadges ?? this.verificationBadges,
       trustScore: trustScore ?? this.trustScore,
       availability: availability ?? this.availability,
+      availabilityStartMinuteOfDay:
+          availabilityStartMinuteOfDay ?? this.availabilityStartMinuteOfDay,
+      availabilityEndMinuteOfDay:
+          availabilityEndMinuteOfDay ?? this.availabilityEndMinuteOfDay,
       helpCategoriesProvided:
           helpCategoriesProvided ?? this.helpCategoriesProvided,
       helpCategoriesRequested:

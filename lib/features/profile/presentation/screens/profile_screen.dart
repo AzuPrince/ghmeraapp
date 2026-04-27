@@ -44,6 +44,11 @@ class ProfileScreen extends StatelessWidget {
       user.area.trim(),
       user.city.trim(),
     ].where((value) => value.isNotEmpty).join(', ');
+    final isCurrentlyAvailable = appState.isUserAvailableForMatching(user);
+    final availabilitySubtitle = _helperAvailabilitySubtitle(
+      user: user,
+      isCurrentlyAvailable: isCurrentlyAvailable,
+    );
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(10, 12, 10, 28),
@@ -136,9 +141,7 @@ class ProfileScreen extends StatelessWidget {
                   style: TextStyle(color: Color(0xFF1D3037)),
                 ),
                 subtitle: Text(
-                  user.availability
-                      ? 'You are visible to matching for your chosen support categories.'
-                      : 'You are hidden from new request broadcasts until you turn availability back on.',
+                  availabilitySubtitle,
                   style: TextStyle(
                     color: const Color(0xFF53626A),
                     height: 1.35,
@@ -495,8 +498,16 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
   late final TextEditingController _areaController;
   late final TextEditingController _phoneController;
   late final TextEditingController _photoController;
+  late final TextEditingController _availabilityTimeController;
   bool? _usesDeviceLocationOverride;
   bool _applyingDeviceLocation = false;
+  int _availabilityStartMinuteOfDay = -1;
+  int _availabilityEndMinuteOfDay = -1;
+
+  bool get _hasAvailabilityWindow {
+    return _availabilityStartMinuteOfDay >= 0 &&
+        _availabilityEndMinuteOfDay >= 0;
+  }
 
   bool get _usesDeviceLocation {
     return _usesDeviceLocationOverride ?? widget.user.usesDeviceLocation;
@@ -513,6 +524,16 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
     _photoController = TextEditingController(
       text: widget.user.profilePhoto ?? '',
     );
+    _availabilityStartMinuteOfDay = widget.user.availabilityStartMinuteOfDay;
+    _availabilityEndMinuteOfDay = widget.user.availabilityEndMinuteOfDay;
+    _availabilityTimeController = TextEditingController(
+      text: _hasAvailabilityWindow
+          ? _formatAvailabilityWindowLabel(
+              _availabilityStartMinuteOfDay,
+              _availabilityEndMinuteOfDay,
+            )
+          : '',
+    );
     _cityController.addListener(_handleManualLocationEdit);
     _areaController.addListener(_handleManualLocationEdit);
   }
@@ -525,6 +546,7 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
     _areaController.dispose();
     _phoneController.dispose();
     _photoController.dispose();
+    _availabilityTimeController.dispose();
     super.dispose();
   }
 
@@ -541,6 +563,8 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
       phone: _phoneController.text,
       profilePhoto: _photoController.text,
       usesDeviceLocation: _usesDeviceLocationOverride,
+      availabilityStartMinuteOfDay: _availabilityStartMinuteOfDay,
+      availabilityEndMinuteOfDay: _availabilityEndMinuteOfDay,
     );
 
     Navigator.of(context).pop();
@@ -600,8 +624,56 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
     ).showSnackBar(const SnackBar(content: Text('Device location loaded.')));
   }
 
+  Future<void> _selectAvailabilityWindow() async {
+    final initialStart = _hasAvailabilityWindow
+        ? _timeOfDayFromMinuteOfDay(_availabilityStartMinuteOfDay)
+        : TimeOfDay.now();
+    final selectedStart = await showTimePicker(
+      context: context,
+      initialTime: initialStart,
+      helpText: 'Select available time start',
+    );
+    if (selectedStart == null || !mounted) {
+      return;
+    }
+
+    final initialEnd = _hasAvailabilityWindow
+        ? _timeOfDayFromMinuteOfDay(_availabilityEndMinuteOfDay)
+        : TimeOfDay(
+            hour: (selectedStart.hour + 1) % 24,
+            minute: selectedStart.minute,
+          );
+    final selectedEnd = await showTimePicker(
+      context: context,
+      initialTime: initialEnd,
+      helpText: 'Select available time end',
+    );
+    if (selectedEnd == null) {
+      return;
+    }
+
+    setState(() {
+      _availabilityStartMinuteOfDay = _minuteOfDayForTime(selectedStart);
+      _availabilityEndMinuteOfDay = _minuteOfDayForTime(selectedEnd);
+      _availabilityTimeController.text = _formatAvailabilityWindowLabel(
+        _availabilityStartMinuteOfDay,
+        _availabilityEndMinuteOfDay,
+      );
+    });
+  }
+
+  void _clearAvailabilityWindow() {
+    setState(() {
+      _availabilityStartMinuteOfDay = -1;
+      _availabilityEndMinuteOfDay = -1;
+      _availabilityTimeController.clear();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Edit profile')),
       body: SafeArea(
@@ -626,6 +698,32 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
                 decoration: const InputDecoration(labelText: 'Short bio'),
                 maxLines: 2,
               ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _availabilityTimeController,
+                readOnly: true,
+                onTap: _selectAvailabilityWindow,
+                decoration: InputDecoration(
+                  labelText: 'Available time',
+                  hintText: 'Tap to set helper matching time range',
+                  suffixIcon: _hasAvailabilityWindow
+                      ? IconButton(
+                          tooltip: 'Clear available time',
+                          onPressed: _clearAvailabilityWindow,
+                          icon: const Icon(Icons.clear_rounded),
+                        )
+                      : const Icon(Icons.schedule_rounded),
+                ),
+              ),
+              if (_hasAvailabilityWindow) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Helper availability will automatically follow this time every day.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF586965),
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
@@ -947,4 +1045,56 @@ class _InfoRow extends StatelessWidget {
       ],
     );
   }
+}
+
+String _helperAvailabilitySubtitle({
+  required UserEntity user,
+  required bool isCurrentlyAvailable,
+}) {
+  if (!user.availability) {
+    return 'You are hidden from new request broadcasts until you turn availability back on.';
+  }
+
+  if (!user.hasAvailabilityWindow) {
+    return 'You are visible to matching for your chosen support categories.';
+  }
+
+  final window = _formatAvailabilityWindowLabel(
+    user.availabilityStartMinuteOfDay,
+    user.availabilityEndMinuteOfDay,
+  );
+  if (isCurrentlyAvailable) {
+    return 'Time window: $window. You are currently visible to matching.';
+  }
+
+  return 'Time window: $window. You are currently outside this window, so matching will pause until your next available time.';
+}
+
+String _formatAvailabilityWindowLabel(
+  int startMinuteOfDay,
+  int endMinuteOfDay,
+) {
+  return '${_formatAvailabilityMinuteOfDay(startMinuteOfDay)} - ${_formatAvailabilityMinuteOfDay(endMinuteOfDay)}';
+}
+
+String _formatAvailabilityMinuteOfDay(int minuteOfDay) {
+  if (minuteOfDay < 0 || minuteOfDay >= 24 * 60) {
+    return '--:--';
+  }
+
+  final hour = minuteOfDay ~/ 60;
+  final minute = minuteOfDay % 60;
+  final period = hour >= 12 ? 'PM' : 'AM';
+  final normalizedHour = hour % 12 == 0 ? 12 : hour % 12;
+  final minuteText = minute.toString().padLeft(2, '0');
+  return '$normalizedHour:$minuteText $period';
+}
+
+TimeOfDay _timeOfDayFromMinuteOfDay(int minuteOfDay) {
+  final normalizedMinute = minuteOfDay < 0 ? 0 : minuteOfDay % (24 * 60);
+  return TimeOfDay(hour: normalizedMinute ~/ 60, minute: normalizedMinute % 60);
+}
+
+int _minuteOfDayForTime(TimeOfDay time) {
+  return time.hour * 60 + time.minute;
 }

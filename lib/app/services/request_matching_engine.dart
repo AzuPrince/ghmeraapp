@@ -331,7 +331,7 @@ class RequestMatchingEngine {
   }
 
   bool _isActiveHelper(UserEntity helper) {
-    return helper.availability;
+    return helper.isCurrentlyAvailable;
   }
 
   bool _isHighRiskQualified(UserEntity helper) {

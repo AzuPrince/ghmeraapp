@@ -82,6 +82,14 @@ class GhmeraAppState extends ChangeNotifier {
 
   List<UserEntity> get users => List<UserEntity>.unmodifiable(_users);
 
+  bool isUserAvailableForMatching(UserEntity user, {DateTime? at}) {
+    return user.isAvailableAt(at ?? DateTime.now());
+  }
+
+  bool get isCurrentUserAvailableForMatching {
+    return isUserAvailableForMatching(currentUser);
+  }
+
   bool _isRequestHiddenForCurrentUser(String requestId) {
     return currentUser.hiddenRequestIds.contains(requestId);
   }
@@ -365,7 +373,9 @@ class GhmeraAppState extends ChangeNotifier {
   int get totalUsers => _users.length;
 
   int get dailyActiveUsers => _users
-      .where((user) => user.availability || user.helpGivenCount > 0)
+      .where(
+        (user) => isUserAvailableForMatching(user) || user.helpGivenCount > 0,
+      )
       .length;
 
   int get helpRequestsCreated => _requests.length;
@@ -458,7 +468,7 @@ class GhmeraAppState extends ChangeNotifier {
             .where(
               (user) =>
                   user.id != _currentUserId &&
-                  user.availability &&
+                  isUserAvailableForMatching(user) &&
                   (requestedCategories.isEmpty ||
                       user.helpCategoriesProvided.any(
                         requestedCategories.contains,
@@ -600,6 +610,8 @@ class GhmeraAppState extends ChangeNotifier {
     String? phone,
     String? profilePhoto,
     bool? usesDeviceLocation,
+    int? availabilityStartMinuteOfDay,
+    int? availabilityEndMinuteOfDay,
   }) {
     final trimmedName = fullName.trim();
     if (trimmedName.isEmpty) {
@@ -628,6 +640,11 @@ class GhmeraAppState extends ChangeNotifier {
           ? trimmedPhoto
           : currentUser.profilePhoto,
       usesDeviceLocation: usesDeviceLocation ?? currentUser.usesDeviceLocation,
+      availabilityStartMinuteOfDay:
+          availabilityStartMinuteOfDay ??
+          currentUser.availabilityStartMinuteOfDay,
+      availabilityEndMinuteOfDay:
+          availabilityEndMinuteOfDay ?? currentUser.availabilityEndMinuteOfDay,
       verificationBadges: badges,
     );
 

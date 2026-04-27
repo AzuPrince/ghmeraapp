@@ -177,6 +177,8 @@ class AppDatabase {
           .toList(),
       'trustScore': user.trustScore,
       'availability': user.availability,
+      'availabilityStartMinuteOfDay': user.availabilityStartMinuteOfDay,
+      'availabilityEndMinuteOfDay': user.availabilityEndMinuteOfDay,
       'helpCategoriesProvided': user.helpCategoriesProvided
           .map((category) => category.name)
           .toList(),
@@ -381,6 +383,12 @@ class AppDatabase {
       ).toSet(),
       trustScore: _readDouble(json['trustScore'], 0),
       availability: json['availability'] as bool? ?? true,
+      availabilityStartMinuteOfDay: _readAvailabilityMinuteOfDay(
+        json['availabilityStartMinuteOfDay'],
+      ),
+      availabilityEndMinuteOfDay: _readAvailabilityMinuteOfDay(
+        json['availabilityEndMinuteOfDay'],
+      ),
       helpCategoriesProvided: _parseEnumList(
         RequestCategory.values,
         json['helpCategoriesProvided'],
@@ -707,6 +715,19 @@ class AppDatabase {
     }
 
     return 0;
+  }
+
+  int _readAvailabilityMinuteOfDay(Object? rawValue) {
+    if (rawValue == null) {
+      return -1;
+    }
+
+    final minuteOfDay = _readInt(rawValue);
+    if (minuteOfDay < 0 || minuteOfDay >= 24 * 60) {
+      return -1;
+    }
+
+    return minuteOfDay;
   }
 
   double _readDouble(Object? rawValue, double fallback) {

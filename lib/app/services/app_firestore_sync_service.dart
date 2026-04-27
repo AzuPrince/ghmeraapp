@@ -313,6 +313,8 @@ class AppFirestoreSyncService {
           .toList(),
       'trustScore': user.trustScore,
       'availability': user.availability,
+      'availabilityStartMinuteOfDay': user.availabilityStartMinuteOfDay,
+      'availabilityEndMinuteOfDay': user.availabilityEndMinuteOfDay,
       'helpCategoriesProvided': user.helpCategoriesProvided
           .map((category) => category.name)
           .toList(),
