@@ -678,7 +678,9 @@ class GhmeraAppState extends ChangeNotifier {
 
     try {
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
       final resolvedLocation = await _resolveLocationFromPosition(position);
       if (resolvedLocation == null) {
