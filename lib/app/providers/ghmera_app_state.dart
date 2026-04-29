@@ -1804,6 +1804,79 @@ class GhmeraAppState extends ChangeNotifier {
     return true;
   }
 
+  bool cancelMyAcceptedRequest(String requestId) {
+    final requestIndex = _requests.indexWhere(
+      (request) => request.id == requestId,
+    );
+    if (requestIndex == -1) {
+      return false;
+    }
+
+    final request = _requests[requestIndex];
+    if (request.requesterId != _currentUserId ||
+        request.acceptedHelperId == null ||
+        request.status == HelpRequestStatus.completed ||
+        request.status == HelpRequestStatus.canceled) {
+      return false;
+    }
+
+    final now = DateTime.now();
+    final updatedRequest = request.copyWith(
+      status: HelpRequestStatus.canceled,
+      actionLog: <HelpActionLogEntry>[
+        ...request.actionLog,
+        HelpActionLogEntry(
+          actorId: _currentUserId,
+          action: 'Requester canceled the accepted help request',
+          createdAt: now,
+        ),
+      ],
+    );
+    _replaceRequest(updatedRequest);
+
+    for (var index = 0; index < _matches.length; index++) {
+      final match = _matches[index];
+      if (match.requestId != requestId ||
+          match.status == MatchStatus.completed ||
+          match.status == MatchStatus.disputed) {
+        continue;
+      }
+
+      _matches[index] = match.copyWith(status: MatchStatus.declined);
+    }
+
+    final helperId = request.acceptedHelperId;
+    if (helperId != null) {
+      _notifications.insert(
+        0,
+        NotificationEntity(
+          id: 'notification_${_notifications.length + 1}',
+          userId: helperId,
+          type: NotificationType.adminUpdate,
+          title: 'Request canceled',
+          message:
+              '${currentUser.fullName} canceled ${request.title}. The request is now closed.',
+          createdAt: now,
+        ),
+      );
+    }
+
+    _notifications.insert(
+      0,
+      NotificationEntity(
+        id: 'notification_${_notifications.length + 1}',
+        userId: _currentUserId,
+        type: NotificationType.adminUpdate,
+        title: 'Request canceled',
+        message: '${request.title} was canceled and removed from active help.',
+        createdAt: now,
+      ),
+    );
+
+    notifyListeners();
+    return true;
+  }
+
   ReportEntity? reportUserAccount({
     required String userId,
     required String reason,

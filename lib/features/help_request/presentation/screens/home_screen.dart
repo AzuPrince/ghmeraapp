@@ -1,4 +1,7 @@
+import 'package:flutter_map/flutter_map.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/models/ghmera_models.dart';
@@ -12,6 +15,12 @@ enum _CommunityRequestMenuAction { removeFromView, reportAccount, blockAccount }
 
 enum _MyRequestMenuAction { hideThisRequest, deleteThisRequest }
 
+enum _AcceptedRequestMenuAction {
+  helpFulfilled,
+  reportHelpGiver,
+  cancelRequest,
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -20,19 +29,27 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
+  static const int _giveHelpTabIndex = 0;
+  static const int _receiveHelpTabIndex = 1;
+  static const int _messagesTabIndex = 2;
+  static const int _safetyTabIndex = 3;
+  static const int _accountTabIndex = 4;
+  static const String _createNewRequestSelection =
+      '__create_new_request_selection__';
+
+  int _currentIndex = _giveHelpTabIndex;
 
   static const List<String> _titles = <String>[
-    'Ghmera',
-    'Requests',
+    'Give Help',
+    'Receive Help',
     'Messages',
     'Safety',
-    'Profile',
+    'Account',
   ];
 
   static const List<String> _subtitles = <String>[
-    'Give help, get help, and stay connected.',
-    'Requests, matching, and lifecycle tracking.',
+    'Browse people who need support right now.',
+    'Manage the help you have asked the community for.',
     'Protected conversations inside the platform.',
     'Trust, wellbeing, and moderation controls.',
     'Identity, privacy, sessions, and reviews.',
@@ -45,34 +62,36 @@ class _HomeScreenState extends State<HomeScreen> {
       _OverviewTab(
         onReviewOpportunity: _showRequestDetailsSheet,
         onRequestLongPress: _showCommunityRequestActions,
-        onOpenProfile: () => _selectTab(4),
       ),
       _RequestsTab(
         onCreateRequest: _openStandardRequest,
         onEditRequest: _editRequest,
         onLongPressMyRequest: _showMyRequestActions,
-        onReviewAcceptedRequest: _showRequestDetailsSheet,
+        onManageAcceptedRequest: _showAcceptedRequestActionsSheet,
+        onDirectRequestHelper: _startDirectHelperRequestFlow,
       ),
       _MessagesTab(onOpenThread: _showThreadSheet),
       _SafetyTab(onReviewRequest: _showRequestDetailsSheet),
       const ProfileScreen(),
     ];
-
-    final showRequestsFab = _currentIndex == 0;
+    final isPrimaryTab = _isPrimaryTab(_currentIndex);
 
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
         centerTitle: false,
-        leading: _currentIndex == 0
+        leading: isPrimaryTab
             ? null
-            : uniformBackButton(context, onPressed: () => _selectTab(0)),
+            : uniformBackButton(
+                context,
+                onPressed: () => _selectTab(_giveHelpTabIndex),
+              ),
         titleSpacing: 10,
         title: _buildAppBarTitle(context),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 4),
-            child: _currentIndex == 1
+            child: _currentIndex == _receiveHelpTabIndex
                 ? Stack(
                     clipBehavior: Clip.none,
                     children: [
@@ -140,13 +159,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
           ),
-          if (_currentIndex == 0)
+          if (_currentIndex == _giveHelpTabIndex)
             IconButton(
               tooltip: 'Messages',
-              onPressed: () => _selectTab(2),
+              onPressed: () => _selectTab(_messagesTabIndex),
               icon: const Icon(Icons.chat_bubble_outline_rounded),
             ),
-          if (_currentIndex == 0)
+          if (_currentIndex == _giveHelpTabIndex)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: IconButton(
@@ -166,24 +185,43 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      floatingActionButton: showRequestsFab
-          ? FloatingActionButton.extended(
-              heroTag: 'requests_fab',
-              onPressed: () => _selectTab(1),
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              icon: const Icon(Icons.assignment_rounded),
-              label: const Text('Your Requests'),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(5),
-              ),
+      bottomNavigationBar: isPrimaryTab
+          ? NavigationBar(
+              selectedIndex: _primaryNavigationIndexFor(_currentIndex),
+              onDestinationSelected: (index) {
+                switch (index) {
+                  case 0:
+                    _selectTab(_giveHelpTabIndex);
+                  case 1:
+                    _selectTab(_receiveHelpTabIndex);
+                  case 2:
+                    _selectTab(_accountTabIndex);
+                }
+              },
+              destinations: const <NavigationDestination>[
+                NavigationDestination(
+                  icon: Icon(Icons.volunteer_activism_outlined),
+                  selectedIcon: Icon(Icons.volunteer_activism_rounded),
+                  label: 'Give Help',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.request_page_outlined),
+                  selectedIcon: Icon(Icons.request_page_rounded),
+                  label: 'Receive Help',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline_rounded),
+                  selectedIcon: Icon(Icons.person_rounded),
+                  label: 'Account',
+                ),
+              ],
             )
           : null,
     );
   }
 
   Widget _buildAppBarTitle(BuildContext context) {
-    if (_currentIndex != 0) {
+    if (_currentIndex != _giveHelpTabIndex) {
       return uniformAppBarTitle(
         context,
         title: _titles[_currentIndex],
@@ -225,12 +263,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return _openRequestComposer(initialRequest: request);
   }
 
-  Future<void> _openRequestComposer({
+  Future<String?> _showRequestComposerScreen({
     RequestCategory initialCategory = RequestCategory.errands,
     bool startEmotionalMode = false,
     HelpRequestEntity? initialRequest,
-  }) async {
-    final requestId = await Navigator.of(context).push<String?>(
+  }) {
+    return Navigator.of(context).push<String?>(
       MaterialPageRoute<String?>(
         builder: (_) => CreateRequestScreen(
           initialCategory: initialCategory,
@@ -239,12 +277,45 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openRequestComposer({
+    RequestCategory initialCategory = RequestCategory.errands,
+    bool startEmotionalMode = false,
+    HelpRequestEntity? initialRequest,
+  }) async {
+    final requestId = await _showRequestComposerScreen(
+      initialCategory: initialCategory,
+      startEmotionalMode: startEmotionalMode,
+      initialRequest: initialRequest,
+    );
 
     if (!mounted || requestId == null) {
       return;
     }
 
-    _selectTab(1);
+    _selectTab(_receiveHelpTabIndex);
+  }
+
+  bool _isPrimaryTab(int index) {
+    return index == _giveHelpTabIndex ||
+        index == _receiveHelpTabIndex ||
+        index == _accountTabIndex;
+  }
+
+  int _primaryNavigationIndexFor(int index) {
+    switch (index) {
+      case _receiveHelpTabIndex:
+        return 1;
+      case _accountTabIndex:
+        return 2;
+      case _giveHelpTabIndex:
+      case _messagesTabIndex:
+      case _safetyTabIndex:
+        return 0;
+    }
+
+    return 0;
   }
 
   Future<void> _showNotificationsSheet() {
@@ -285,6 +356,330 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => _RequestDetailsScreen(
           initialRequest: initialRequest,
           onOpenThread: _showThreadSheet,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startDirectHelperRequestFlow(UserEntity helper) async {
+    final selectedRequestId = await _showDirectHelperRequestSheet(helper);
+    if (!mounted || selectedRequestId == null) {
+      return;
+    }
+
+    String? requestId = selectedRequestId;
+    if (selectedRequestId == _createNewRequestSelection) {
+      requestId = await _showRequestComposerScreen();
+      if (!mounted || requestId == null) {
+        return;
+      }
+
+      _selectTab(_receiveHelpTabIndex);
+    }
+
+    final matched = context.read<GhmeraAppState>().requestHelperForMyRequest(
+      requestId: requestId,
+      helperId: helper.id,
+    );
+    final helperFirstName = helper.fullName.trim().split(' ').first;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          matched
+              ? '$helperFirstName was requested directly for your help request.'
+              : 'Could not request $helperFirstName for that help request.',
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _showDirectHelperRequestSheet(UserEntity helper) {
+    final appState = context.read<GhmeraAppState>();
+    final editableRequests =
+        appState.myRequests
+            .where(
+              (request) =>
+                  request.acceptedHelperId == null &&
+                  request.status != HelpRequestStatus.completed &&
+                  request.status != HelpRequestStatus.canceled,
+            )
+            .toList()
+          ..sort(
+            (first, second) => second.createdAt.compareTo(first.createdAt),
+          );
+
+    return showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+      ),
+      builder: (sheetContext) {
+        final helperFirstName = helper.fullName.trim().split(' ').first;
+
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                child: Text(
+                  'Request help from ${helper.fullName}',
+                  style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                child: Text(
+                  editableRequests.isEmpty
+                      ? 'Create a new request and send it directly to $helperFirstName.'
+                      : 'Choose an existing request or create a new one for $helperFirstName.',
+                  style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF61726F),
+                  ),
+                ),
+              ),
+              if (editableRequests.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  child: Text(
+                    'No editable requests are available yet.',
+                    style: TextStyle(color: Color(0xFF61726F)),
+                  ),
+                )
+              else
+                for (final request in editableRequests)
+                  ListTile(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    onTap: () => Navigator.of(sheetContext).pop(request.id),
+                    leading: const Icon(Icons.assignment_outlined),
+                    title: Text(
+                      request.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(sheetContext).textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      '${request.category.label} • ${request.location}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(sheetContext).textTheme.bodySmall
+                          ?.copyWith(color: const Color(0xFF61726F)),
+                    ),
+                  ),
+              _MenuSheetActionTile(
+                icon: Icons.add_circle_outline_rounded,
+                label: 'Create new request for $helperFirstName',
+                onTap: () =>
+                    Navigator.of(sheetContext).pop(_createNewRequestSelection),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showAcceptedRequestActionsSheet(
+    HelpRequestEntity initialRequest,
+  ) async {
+    final appState = context.read<GhmeraAppState>();
+    final request = appState.requestById(initialRequest.id);
+    final helper = appState.helperForRequest(request);
+    if (helper == null) {
+      await _showRequestDetailsSheet(request);
+      return;
+    }
+
+    final selectedAction =
+        await showModalBottomSheet<_AcceptedRequestMenuAction>(
+          context: context,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+          ),
+          builder: (sheetContext) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                      child: Text(
+                        request.title,
+                        style: Theme.of(sheetContext).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                      child: Text(
+                        'Actions for ${helper.fullName}',
+                        style: Theme.of(sheetContext).textTheme.bodyMedium
+                            ?.copyWith(color: const Color(0xFF61726F)),
+                      ),
+                    ),
+                    _MenuSheetActionTile(
+                      icon: Icons.task_alt_rounded,
+                      label: 'Help fulfilled',
+                      onTap: () => Navigator.of(
+                        sheetContext,
+                      ).pop(_AcceptedRequestMenuAction.helpFulfilled),
+                    ),
+                    _MenuSheetActionTile(
+                      icon: Icons.report_outlined,
+                      label: 'Report help giver',
+                      foregroundColor: const Color(0xFF9A2F2F),
+                      onTap: () => Navigator.of(
+                        sheetContext,
+                      ).pop(_AcceptedRequestMenuAction.reportHelpGiver),
+                    ),
+                    _MenuSheetActionTile(
+                      icon: Icons.cancel_outlined,
+                      label: 'Cancel request',
+                      foregroundColor: const Color(0xFF9A2F2F),
+                      onTap: () => Navigator.of(
+                        sheetContext,
+                      ).pop(_AcceptedRequestMenuAction.cancelRequest),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+
+    if (!mounted || selectedAction == null) {
+      return;
+    }
+
+    switch (selectedAction) {
+      case _AcceptedRequestMenuAction.helpFulfilled:
+        await _confirmAcceptedRequestFulfilled(request);
+        return;
+      case _AcceptedRequestMenuAction.reportHelpGiver:
+        await _showParticipantSafetyReportSheet(
+          request: request,
+          reportedUser: helper,
+        );
+        return;
+      case _AcceptedRequestMenuAction.cancelRequest:
+        await _cancelAcceptedRequest(request);
+        return;
+    }
+  }
+
+  Future<void> _confirmAcceptedRequestFulfilled(
+    HelpRequestEntity initialRequest,
+  ) async {
+    final appState = context.read<GhmeraAppState>();
+    final request = appState.requestById(initialRequest.id);
+    if (!appState.canCurrentUserConfirmRequestCompletion(request)) {
+      final message = request.status == HelpRequestStatus.completed
+          ? 'This request is already complete.'
+          : appState.hasCurrentUserConfirmedRequestCompletion(request)
+          ? 'You already marked this help as fulfilled.'
+          : 'This request cannot be marked fulfilled yet.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+
+    final shouldConfirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Help fulfilled'),
+        content: const Text(
+          'Mark this request as fulfilled from your side. Once both sides confirm, the help giver\'s score and trust increase and the request closes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldConfirm != true || !mounted) {
+      return;
+    }
+
+    final confirmed = appState.confirmCurrentUserRequestCompletion(request.id);
+    final refreshedRequest = appState.requestById(request.id);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          !confirmed
+              ? 'Help fulfillment could not be updated.'
+              : refreshedRequest.status == HelpRequestStatus.completed
+              ? 'Both participants confirmed completion. The help giver\'s score and trust increased, and reviews are now open.'
+              : 'Your help fulfillment confirmation was saved. Once the helper also confirms, their score and trust will increase.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _cancelAcceptedRequest(HelpRequestEntity initialRequest) async {
+    final appState = context.read<GhmeraAppState>();
+    final request = appState.requestById(initialRequest.id);
+    if (request.status == HelpRequestStatus.completed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Completed requests cannot be canceled.')),
+      );
+      return;
+    }
+
+    if (request.status == HelpRequestStatus.canceled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This request is already canceled.')),
+      );
+      return;
+    }
+
+    final shouldCancel = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel request'),
+        content: const Text(
+          'Cancel this request for both you and the accepted help giver? This will close the request.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep request'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Cancel request'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldCancel != true || !mounted) {
+      return;
+    }
+
+    final canceled = appState.cancelMyAcceptedRequest(request.id);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          canceled
+              ? 'Request canceled and removed from active help.'
+              : 'This request could not be canceled.',
         ),
       ),
     );
@@ -526,6 +921,27 @@ class _HomeScreenState extends State<HomeScreen> {
         const SnackBar(
           content: Text('Account report submitted to moderators.'),
         ),
+      );
+    }
+  }
+
+  Future<void> _showParticipantSafetyReportSheet({
+    required HelpRequestEntity request,
+    required UserEntity reportedUser,
+  }) async {
+    final submitted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+      ),
+      builder: (_) =>
+          _SafetyReportSheet(request: request, reportedUser: reportedUser),
+    );
+
+    if (submitted == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Safety report submitted to moderators.')),
       );
     }
   }
@@ -1740,29 +2156,14 @@ class _OverviewTab extends StatelessWidget {
   const _OverviewTab({
     required this.onReviewOpportunity,
     required this.onRequestLongPress,
-    required this.onOpenProfile,
   });
 
   final ValueChanged<HelpRequestEntity> onReviewOpportunity;
   final ValueChanged<HelpRequestEntity> onRequestLongPress;
-  final VoidCallback onOpenProfile;
 
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<GhmeraAppState>();
-    final user = appState.currentUser;
-    final theme = Theme.of(context);
-    final normalizedBio = user.shortBio.trim().toLowerCase();
-    final showBio =
-        user.shortBio.trim().isNotEmpty &&
-        normalizedBio != 'new community member.' &&
-        normalizedBio != 'new community member' &&
-        normalizedBio != 'new community memner.' &&
-        normalizedBio != 'new community memner';
-    final locationLabel = [
-      user.area.trim(),
-      user.city.trim(),
-    ].where((value) => value.isNotEmpty).join(', ');
     final allHelpRequests = appState.requestsNeedingMyHelp;
     final acceptedRequests = allHelpRequests
         .where((request) => request.acceptedHelperId == appState.currentUserId)
@@ -1774,126 +2175,6 @@ class _OverviewTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(10, 12, 10, 28),
       children: [
-        GestureDetector(
-          onTap: onOpenProfile,
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: <Color>[Color(0xFFF1F3F6), Color(0xFFE3E7EC)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(5),
-              border: Border.all(color: const Color(0xFFD5DBE3)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _RequesterAvatar(requester: user, size: 68),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            user.fullName,
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              color: const Color(0xFF1A2A31),
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          if (showBio) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              user.shortBio,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: const Color(0xFF53626A),
-                                height: 1.45,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 10),
-                          Text(
-                            locationLabel,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: const Color(0xFF61726F),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  alignment: WrapAlignment.center,
-                  runAlignment: WrapAlignment.center,
-                  children: [
-                    _HeroPill(
-                      icon: Icons.workspace_premium_rounded,
-                      label: 'Trust ${user.trustScore.toStringAsFixed(0)}',
-                      backgroundColor: const Color(0xFFDCE2E9),
-                      foregroundColor: const Color(0xFF1D3037),
-                      compact: true,
-                    ),
-                    _HeroPill(
-                      icon: Icons.sync_alt_rounded,
-                      label: 'Balance ${user.helpBalance}',
-                      backgroundColor: const Color(0xFFDCE2E9),
-                      foregroundColor: const Color(0xFF1D3037),
-                      compact: true,
-                    ),
-                    _HeroPill(
-                      icon: Icons.notifications_active_outlined,
-                      label:
-                          '${appState.unreadNotificationsCount} unread alerts',
-                      backgroundColor: const Color(0xFFDCE2E9),
-                      foregroundColor: const Color(0xFF1D3037),
-                      compact: true,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                if (appState.hasReciprocityActivity) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(5),
-                    child: LinearProgressIndicator(
-                      value: appState.reciprocityProgress,
-                      minHeight: 3,
-                      backgroundColor: const Color(0xFFD0D7DF),
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Reciprocity value ${appState.reciprocityPercent}%',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF53626A),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                ],
-                Text(
-                  appState.reciprocityMessage,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF53626A),
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
         const _SectionHeader(
           title: 'Accepted requests',
           subtitle: 'People requests you have already accepted to help with.',
@@ -1950,21 +2231,29 @@ class _RequestsTab extends StatelessWidget {
     required this.onCreateRequest,
     required this.onEditRequest,
     required this.onLongPressMyRequest,
-    required this.onReviewAcceptedRequest,
+    required this.onManageAcceptedRequest,
+    required this.onDirectRequestHelper,
   });
 
   final VoidCallback onCreateRequest;
   final ValueChanged<HelpRequestEntity> onEditRequest;
   final ValueChanged<HelpRequestEntity> onLongPressMyRequest;
-  final ValueChanged<HelpRequestEntity> onReviewAcceptedRequest;
+  final ValueChanged<HelpRequestEntity> onManageAcceptedRequest;
+  final ValueChanged<UserEntity> onDirectRequestHelper;
 
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<GhmeraAppState>();
+    final currentUser = appState.currentUser;
+    final nearbyHelpers = _nearbyHelpers(appState);
     final myPastRequests = appState.myRequests.toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final acceptedRequests = myPastRequests
-        .where((request) => request.acceptedHelperId != null)
+        .where(
+          (request) =>
+              request.acceptedHelperId != null &&
+              request.status != HelpRequestStatus.canceled,
+        )
         .toList();
     final editableRequests = myPastRequests
         .where((request) => request.acceptedHelperId == null)
@@ -1993,7 +2282,7 @@ class _RequestsTab extends StatelessWidget {
                   _AcceptedMyRequestTile(
                     request: request,
                     helper: appState.helperForRequest(request)!,
-                    onTap: () => onReviewAcceptedRequest(request),
+                    onTap: () => onManageAcceptedRequest(request),
                   ),
               const SizedBox(height: 14),
               const _SectionHeader(
@@ -2020,25 +2309,639 @@ class _RequestsTab extends StatelessWidget {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(10, 6, 10, 12),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: onCreateRequest,
-                icon: const Icon(Icons.add_circle_outline_rounded),
-                label: const Text('New request'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(5),
+            child: Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onCreateRequest,
+                    icon: const Icon(Icons.add_circle_outline_rounded),
+                    label: const Text('New request'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showNeighborhoodHelpersMapSheet(
+                      context,
+                      currentUser: currentUser,
+                      helpers: nearbyHelpers,
+                      onSelectHelper: onDirectRequestHelper,
+                    ),
+                    icon: const Icon(Icons.map_outlined),
+                    label: const Text('Nearby helpers'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
       ],
     );
   }
+
+  Future<void> _showNeighborhoodHelpersMapSheet(
+    BuildContext context, {
+    required UserEntity currentUser,
+    required List<UserEntity> helpers,
+    required ValueChanged<UserEntity> onSelectHelper,
+  }) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      clipBehavior: Clip.antiAlias,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+      ),
+      builder: (context) => _NeighborhoodHelpersMapSheet(
+        currentUser: currentUser,
+        helpers: helpers,
+        onSelectHelper: onSelectHelper,
+      ),
+    );
+  }
+
+  List<UserEntity> _nearbyHelpers(GhmeraAppState appState) {
+    final currentUser = appState.currentUser;
+    if (!_hasApproximateLocation(currentUser)) {
+      return const <UserEntity>[];
+    }
+
+    final helperById = <String, UserEntity>{};
+    for (final request in appState.myOpenRequests) {
+      for (final helper in appState.helperCandidatesForRequest(request)) {
+        helperById[helper.id] = helper;
+      }
+    }
+
+    if (helperById.isEmpty) {
+      for (final helper in appState.potentialHelpers) {
+        helperById[helper.id] = helper;
+      }
+    }
+
+    final helpers =
+        helperById.values.where((helper) {
+          if (helper.id == currentUser.id) {
+            return false;
+          }
+
+          if (!_hasApproximateLocation(helper) ||
+              !helper.privacySettings.showApproximateLocation) {
+            return false;
+          }
+
+          if (currentUser.blockedUserIds.contains(helper.id) ||
+              helper.blockedUserIds.contains(currentUser.id)) {
+            return false;
+          }
+
+          return _matchesNeighborhood(helper.area, currentUser.area) ||
+              _matchesNeighborhood(helper.city, currentUser.city) ||
+              _matchesNeighborhood(helper.area, currentUser.city) ||
+              _matchesNeighborhood(helper.city, currentUser.area);
+        }).toList()..sort((first, second) {
+          final neighborhoodComparison = _helperNeighborhoodScore(
+            second,
+            currentUser,
+          ).compareTo(_helperNeighborhoodScore(first, currentUser));
+          if (neighborhoodComparison != 0) {
+            return neighborhoodComparison;
+          }
+
+          return (second.trustScore + second.averageRating * 10).compareTo(
+            first.trustScore + first.averageRating * 10,
+          );
+        });
+
+    return helpers.take(12).toList();
+  }
+
+  int _helperNeighborhoodScore(UserEntity helper, UserEntity currentUser) {
+    var score = 0;
+    if (_matchesNeighborhood(helper.area, currentUser.area)) {
+      score += 2;
+    }
+    if (_matchesNeighborhood(helper.city, currentUser.city)) {
+      score += 1;
+    }
+    return score;
+  }
+
+  bool _hasApproximateLocation(UserEntity user) {
+    return user.area.trim().isNotEmpty || user.city.trim().isNotEmpty;
+  }
+
+  bool _matchesNeighborhood(String left, String right) {
+    final normalizedLeft = _normalizeLocation(left);
+    final normalizedRight = _normalizeLocation(right);
+    if (normalizedLeft.isEmpty || normalizedRight.isEmpty) {
+      return false;
+    }
+
+    return normalizedLeft == normalizedRight ||
+        normalizedLeft.contains(normalizedRight) ||
+        normalizedRight.contains(normalizedLeft);
+  }
+
+  String _normalizeLocation(String value) {
+    return value.trim().toLowerCase();
+  }
+}
+
+class _NeighborhoodHelpersMapSheet extends StatefulWidget {
+  const _NeighborhoodHelpersMapSheet({
+    required this.currentUser,
+    required this.helpers,
+    required this.onSelectHelper,
+  });
+
+  final UserEntity currentUser;
+  final List<UserEntity> helpers;
+  final ValueChanged<UserEntity> onSelectHelper;
+
+  @override
+  State<_NeighborhoodHelpersMapSheet> createState() =>
+      _NeighborhoodHelpersMapSheetState();
+}
+
+class _NeighborhoodHelpersMapSheetState
+    extends State<_NeighborhoodHelpersMapSheet> {
+  late final Future<_NeighborhoodHelpersMapData> _mapDataFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _mapDataFuture = _loadNeighborhoodMapData();
+  }
+
+  void _handleHelperTap(UserEntity helper) {
+    Navigator.of(context).pop();
+    widget.onSelectHelper(helper);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.78,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+        child: FutureBuilder<_NeighborhoodHelpersMapData>(
+          future: _mapDataFuture,
+          builder: (context, snapshot) {
+            final data = snapshot.data;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD0D7DF),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Help giver near you',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _sheetSubtitle(),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF5C6A67),
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (snapshot.connectionState != ConnectionState.done)
+                  const Expanded(
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (snapshot.hasError)
+                  const Expanded(
+                    child: _EmptyStateCard(
+                      title: 'Map unavailable',
+                      message:
+                          'The neighborhood map could not be loaded right now. Try again in a moment.',
+                    ),
+                  )
+                else if (data == null || !data.hasMap)
+                  Expanded(
+                    child: _EmptyStateCard(
+                      title: 'No mappable helpers yet',
+                      message: _emptyStateMessage(),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(5),
+                          child: SizedBox(
+                            height: 320,
+                            child: FlutterMap(
+                              options: MapOptions(
+                                initialCenter: data.mapCenter!,
+                                initialZoom: data.helperMarkers.length > 5
+                                    ? 11.8
+                                    : 12.8,
+                              ),
+                              children: [
+                                TileLayer(
+                                  urlTemplate:
+                                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                  userAgentPackageName:
+                                      'com.peatech.ghmera_app',
+                                ),
+                                MarkerLayer(
+                                  markers: [
+                                    if (data.currentUserPoint != null)
+                                      Marker(
+                                        point: data.currentUserPoint!,
+                                        width: 72,
+                                        height: 72,
+                                        child:
+                                            const _CurrentNeighborhoodMarker(),
+                                      ),
+                                    for (final marker in data.helperMarkers)
+                                      Marker(
+                                        point: marker.point,
+                                        width: 88,
+                                        height: 84,
+                                        child: _NeighborhoodHelperMapMarker(
+                                          marker: marker,
+                                          onTap: () =>
+                                              _handleHelperTap(marker.helper),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Approximate locations only. Map data © OpenStreetMap contributors.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF61726F),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Helpers on the map',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: ListView.separated(
+                            itemCount: data.helperMarkers.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final marker = data.helperMarkers[index];
+                              return _NeighborhoodHelperListTile(
+                                marker: marker,
+                                onTap: () => _handleHelperTap(marker.helper),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<_NeighborhoodHelpersMapData> _loadNeighborhoodMapData() async {
+    final cache = <String, LatLng>{};
+    final duplicateCounts = <String, int>{};
+    final currentUserPoint = await _resolveApproximatePoint(
+      widget.currentUser.area,
+      widget.currentUser.city,
+      cache: cache,
+    );
+
+    final markers = <_NeighborhoodHelperMarkerData>[];
+    for (final helper in widget.helpers) {
+      final locationLabel = _buildLocationLabel(helper.area, helper.city);
+      if (locationLabel.isEmpty) {
+        continue;
+      }
+
+      final point = await _resolveApproximatePoint(
+        helper.area,
+        helper.city,
+        cache: cache,
+      );
+      if (point == null) {
+        continue;
+      }
+
+      final duplicateIndex = duplicateCounts.update(
+        locationLabel,
+        (value) => value + 1,
+        ifAbsent: () => 0,
+      );
+
+      markers.add(
+        _NeighborhoodHelperMarkerData(
+          helper: helper,
+          point: _offsetPoint(point, duplicateIndex),
+          locationLabel: locationLabel,
+        ),
+      );
+    }
+
+    return _NeighborhoodHelpersMapData(
+      currentUserPoint: currentUserPoint,
+      mapCenter:
+          currentUserPoint ?? (markers.isNotEmpty ? markers.first.point : null),
+      helperMarkers: markers,
+    );
+  }
+
+  Future<LatLng?> _resolveApproximatePoint(
+    String area,
+    String city, {
+    required Map<String, LatLng> cache,
+  }) async {
+    final query = _buildLocationLabel(area, city);
+    if (query.isEmpty) {
+      return null;
+    }
+
+    final cachedPoint = cache[query];
+    if (cachedPoint != null) {
+      return cachedPoint;
+    }
+
+    try {
+      final locations = await locationFromAddress(query);
+      if (locations.isEmpty) {
+        return null;
+      }
+
+      final point = LatLng(locations.first.latitude, locations.first.longitude);
+      cache[query] = point;
+      return point;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  LatLng _offsetPoint(LatLng point, int index) {
+    const offsets = <Offset>[
+      Offset(0, 0),
+      Offset(0.0024, 0.0012),
+      Offset(-0.0022, 0.0012),
+      Offset(0.0024, -0.0012),
+      Offset(-0.0022, -0.0012),
+      Offset(0.0036, 0),
+    ];
+
+    final offset = offsets[index % offsets.length];
+    return LatLng(point.latitude + offset.dy, point.longitude + offset.dx);
+  }
+
+  String _sheetSubtitle() {
+    if (!_hasLocation(widget.currentUser)) {
+      return 'Add your city or area to view help givers near you.';
+    }
+
+    return 'Tap a helper on the map to send a direct help request.';
+  }
+
+  String _emptyStateMessage() {
+    if (!_hasLocation(widget.currentUser)) {
+      return 'Add your area or city in Account to start seeing nearby help givers on this map.';
+    }
+
+    if (widget.helpers.isEmpty) {
+      return 'No help givers are currently sharing approximate location in your neighborhood.';
+    }
+
+    return 'Nearby help givers were found, but their approximate map positions could not be resolved yet.';
+  }
+
+  bool _hasLocation(UserEntity user) {
+    return user.area.trim().isNotEmpty || user.city.trim().isNotEmpty;
+  }
+}
+
+class _NeighborhoodHelpersMapData {
+  const _NeighborhoodHelpersMapData({
+    required this.currentUserPoint,
+    required this.mapCenter,
+    required this.helperMarkers,
+  });
+
+  final LatLng? currentUserPoint;
+  final LatLng? mapCenter;
+  final List<_NeighborhoodHelperMarkerData> helperMarkers;
+
+  bool get hasMap => mapCenter != null && helperMarkers.isNotEmpty;
+}
+
+class _NeighborhoodHelperMarkerData {
+  const _NeighborhoodHelperMarkerData({
+    required this.helper,
+    required this.point,
+    required this.locationLabel,
+  });
+
+  final UserEntity helper;
+  final LatLng point;
+  final String locationLabel;
+}
+
+class _CurrentNeighborhoodMarker extends StatelessWidget {
+  const _CurrentNeighborhoodMarker();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF163C38),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: const Text(
+            'You',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const Icon(
+          Icons.my_location_rounded,
+          color: Color(0xFF163C38),
+          size: 24,
+        ),
+      ],
+    );
+  }
+}
+
+class _NeighborhoodHelperMapMarker extends StatelessWidget {
+  const _NeighborhoodHelperMapMarker({
+    required this.marker,
+    required this.onTap,
+  });
+
+  final _NeighborhoodHelperMarkerData marker;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final firstName = marker.helper.fullName.trim().split(' ').first;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Tooltip(
+        message: '${marker.helper.fullName}\n${marker.locationLabel}',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Text(
+                firstName,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: theme.colorScheme.onPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.location_on_rounded,
+              color: theme.colorScheme.primary,
+              size: 28,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NeighborhoodHelperListTile extends StatelessWidget {
+  const _NeighborhoodHelperListTile({
+    required this.marker,
+    required this.onTap,
+  });
+
+  final _NeighborhoodHelperMarkerData marker;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final helper = marker.helper;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(5),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x10000000),
+            blurRadius: 14,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ListTile(
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        leading: _RequesterAvatar(requester: helper, size: 56),
+        title: Text(
+          helper.fullName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          '${marker.locationLabel} • ${helper.serviceRadiusKm.toStringAsFixed(0)} km radius',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF61726F)),
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              helper.trustScore.toStringAsFixed(0),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            Text(
+              'Trust',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF61726F)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _buildLocationLabel(String area, String city) {
+  final values = <String>[
+    area.trim(),
+    city.trim(),
+  ].where((value) => value.isNotEmpty).toList();
+  return values.join(', ');
 }
 
 class _HiddenRequestsScreen extends StatelessWidget {
@@ -3483,48 +4386,30 @@ class _Pill extends StatelessWidget {
 }
 
 class _HeroPill extends StatelessWidget {
-  const _HeroPill({
-    required this.icon,
-    required this.label,
-    this.backgroundColor = const Color(0x1FFFFFFF),
-    this.foregroundColor = Colors.white,
-    this.compact = false,
-  });
+  const _HeroPill({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
-  final Color backgroundColor;
-  final Color foregroundColor;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final horizontalPadding = compact ? 8.0 : 12.0;
-    final verticalPadding = compact ? 7.0 : 10.0;
-    final iconSize = compact ? 15.0 : 18.0;
-    final gap = compact ? 6.0 : 8.0;
-    final fontSize = compact ? 12.0 : 14.0;
-
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: verticalPadding,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: const Color(0x1FFFFFFF),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: iconSize, color: foregroundColor),
-          SizedBox(width: gap),
+          Icon(icon, size: 18, color: Colors.white),
+          const SizedBox(width: 8),
           Text(
             label,
-            style: TextStyle(
-              color: foregroundColor,
+            style: const TextStyle(
+              color: Colors.white,
               fontWeight: FontWeight.w600,
-              fontSize: fontSize,
+              fontSize: 14,
             ),
           ),
         ],
