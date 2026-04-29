@@ -620,6 +620,14 @@ class GhmeraAppState extends ChangeNotifier {
 
     final trimmedPhone = phone?.trim();
     final trimmedPhoto = profilePhoto?.trim();
+    final normalizedCity = city.trim();
+    final normalizedArea = area.trim();
+    final resolvedUsesDeviceLocation =
+        usesDeviceLocation ?? currentUser.usesDeviceLocation;
+    final shouldClearExactLocation =
+        !resolvedUsesDeviceLocation ||
+        normalizedCity != currentUser.city ||
+        normalizedArea != currentUser.area;
     final badges = <VerificationBadge>{...currentUser.verificationBadges};
     if (currentUser.email.trim().isNotEmpty) {
       badges.add(VerificationBadge.emailVerified);
@@ -631,15 +639,21 @@ class GhmeraAppState extends ChangeNotifier {
     final updatedUser = currentUser.copyWith(
       fullName: trimmedName,
       shortBio: shortBio.trim(),
-      city: city.trim(),
-      area: area.trim(),
+      city: normalizedCity,
+      area: normalizedArea,
       phone: trimmedPhone != null && trimmedPhone.isNotEmpty
           ? trimmedPhone
           : currentUser.phone,
       profilePhoto: trimmedPhoto != null && trimmedPhoto.isNotEmpty
           ? trimmedPhoto
           : currentUser.profilePhoto,
-      usesDeviceLocation: usesDeviceLocation ?? currentUser.usesDeviceLocation,
+      usesDeviceLocation: resolvedUsesDeviceLocation,
+      exactLatitude: shouldClearExactLocation
+          ? null
+          : currentUser.exactLatitude,
+      exactLongitude: shouldClearExactLocation
+          ? null
+          : currentUser.exactLongitude,
       availabilityStartMinuteOfDay:
           availabilityStartMinuteOfDay ??
           currentUser.availabilityStartMinuteOfDay,
@@ -690,6 +704,8 @@ class GhmeraAppState extends ChangeNotifier {
       _applyCurrentUserDeviceLocation(
         city: resolvedLocation.city,
         area: resolvedLocation.area,
+        exactLatitude: resolvedLocation.exactLatitude,
+        exactLongitude: resolvedLocation.exactLongitude,
         enableAutoUpdate: enableAutoUpdate,
       );
 
@@ -699,7 +715,7 @@ class GhmeraAppState extends ChangeNotifier {
         await _stopLocationTracking();
       }
 
-      return resolvedLocation;
+      return (city: resolvedLocation.city, area: resolvedLocation.area);
     } catch (_) {
       return null;
     }
@@ -2736,13 +2752,16 @@ class GhmeraAppState extends ChangeNotifier {
     _applyCurrentUserDeviceLocation(
       city: resolvedLocation.city,
       area: resolvedLocation.area,
+      exactLatitude: resolvedLocation.exactLatitude,
+      exactLongitude: resolvedLocation.exactLongitude,
       enableAutoUpdate: true,
     );
   }
 
-  Future<({String city, String area})?> _resolveLocationFromPosition(
-    Position position,
-  ) async {
+  Future<
+    ({String city, String area, double exactLatitude, double exactLongitude})?
+  >
+  _resolveLocationFromPosition(Position position) async {
     try {
       final placemarks = await placemarkFromCoordinates(
         position.latitude,
@@ -2765,7 +2784,12 @@ class GhmeraAppState extends ChangeNotifier {
         return null;
       }
 
-      return (city: city, area: area);
+      return (
+        city: city,
+        area: area,
+        exactLatitude: position.latitude,
+        exactLongitude: position.longitude,
+      );
     } catch (_) {
       return null;
     }
@@ -2806,6 +2830,8 @@ class GhmeraAppState extends ChangeNotifier {
   void _applyCurrentUserDeviceLocation({
     required String city,
     required String area,
+    required double exactLatitude,
+    required double exactLongitude,
     required bool enableAutoUpdate,
   }) {
     final user = _findUserById(_currentUserId);
@@ -2818,7 +2844,9 @@ class GhmeraAppState extends ChangeNotifier {
     final resolvedCity = normalizedCity.isNotEmpty ? normalizedCity : user.city;
     if (user.city == resolvedCity &&
         user.area == normalizedArea &&
-        user.usesDeviceLocation == enableAutoUpdate) {
+        user.usesDeviceLocation == enableAutoUpdate &&
+        user.exactLatitude == exactLatitude &&
+        user.exactLongitude == exactLongitude) {
       return;
     }
 
@@ -2826,6 +2854,8 @@ class GhmeraAppState extends ChangeNotifier {
       user.copyWith(
         city: resolvedCity,
         area: normalizedArea,
+        exactLatitude: exactLatitude,
+        exactLongitude: exactLongitude,
         usesDeviceLocation: enableAutoUpdate,
       ),
     );

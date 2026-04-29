@@ -404,6 +404,8 @@ class PrivacySettings {
   }
 }
 
+const Object _userEntityFieldUnchanged = Object();
+
 class UserEntity {
   const UserEntity({
     required this.id,
@@ -414,6 +416,8 @@ class UserEntity {
     this.shortBio = '',
     this.city = '',
     this.area = '',
+    this.exactLatitude,
+    this.exactLongitude,
     this.verificationBadges = const <VerificationBadge>{},
     this.trustScore = 50,
     this.availability = true,
@@ -450,6 +454,8 @@ class UserEntity {
   final String shortBio;
   final String city;
   final String area;
+  final double? exactLatitude;
+  final double? exactLongitude;
   final Set<VerificationBadge> verificationBadges;
   final double trustScore;
   final bool availability;
@@ -497,6 +503,8 @@ class UserEntity {
   bool get trustedHelper =>
       verificationBadges.contains(VerificationBadge.trustedHelper);
 
+  bool get hasExactLocation => exactLatitude != null && exactLongitude != null;
+
   bool get hasAvailabilityWindow {
     return availabilityStartMinuteOfDay >= 0 && availabilityEndMinuteOfDay >= 0;
   }
@@ -540,6 +548,8 @@ class UserEntity {
     String? shortBio,
     String? city,
     String? area,
+    Object? exactLatitude = _userEntityFieldUnchanged,
+    Object? exactLongitude = _userEntityFieldUnchanged,
     Set<VerificationBadge>? verificationBadges,
     double? trustScore,
     bool? availability,
@@ -576,6 +586,12 @@ class UserEntity {
       shortBio: shortBio ?? this.shortBio,
       city: city ?? this.city,
       area: area ?? this.area,
+      exactLatitude: identical(exactLatitude, _userEntityFieldUnchanged)
+          ? this.exactLatitude
+          : exactLatitude as double?,
+      exactLongitude: identical(exactLongitude, _userEntityFieldUnchanged)
+          ? this.exactLongitude
+          : exactLongitude as double?,
       verificationBadges: verificationBadges ?? this.verificationBadges,
       trustScore: trustScore ?? this.trustScore,
       availability: availability ?? this.availability,

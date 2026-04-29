@@ -2647,11 +2647,16 @@ class _NeighborhoodHelpersMapSheetState
   Future<_NeighborhoodHelpersMapData> _loadNeighborhoodMapData() async {
     final cache = <String, LatLng>{};
     final duplicateCounts = <String, int>{};
-    final currentUserPoint = await _resolveApproximatePoint(
+    final currentUserExactPoint = _exactPointForUser(widget.currentUser);
+    final currentUserApproximatePoint = await _resolveApproximatePoint(
       widget.currentUser.area,
       widget.currentUser.city,
       cache: cache,
     );
+    final currentUserDistancePoint =
+        currentUserExactPoint ?? currentUserApproximatePoint;
+    final currentUserPoint =
+        currentUserApproximatePoint ?? currentUserExactPoint;
 
     final markers = <_NeighborhoodHelperMarkerData>[];
     for (final helper in widget.helpers) {
@@ -2660,14 +2665,26 @@ class _NeighborhoodHelpersMapSheetState
         continue;
       }
 
-      final point = await _resolveApproximatePoint(
+      final approximatePoint = await _resolveApproximatePoint(
         helper.area,
         helper.city,
         cache: cache,
       );
-      if (point == null) {
+      if (approximatePoint == null) {
         continue;
       }
+
+      final helperExactPoint = _exactPointForUser(helper);
+      final helperDistancePoint = helperExactPoint ?? approximatePoint;
+      final isDistanceApproximate =
+          currentUserExactPoint == null || helperExactPoint == null;
+      final distanceKm = currentUserDistancePoint == null
+          ? null
+          : const Distance().as(
+              LengthUnit.Kilometer,
+              currentUserDistancePoint,
+              helperDistancePoint,
+            );
 
       final duplicateIndex = duplicateCounts.update(
         locationLabel,
@@ -2678,8 +2695,10 @@ class _NeighborhoodHelpersMapSheetState
       markers.add(
         _NeighborhoodHelperMarkerData(
           helper: helper,
-          point: _offsetPoint(point, duplicateIndex),
+          point: _offsetPoint(approximatePoint, duplicateIndex),
           locationLabel: locationLabel,
+          distanceKm: distanceKm,
+          isDistanceApproximate: distanceKm != null && isDistanceApproximate,
         ),
       );
     }
@@ -2690,6 +2709,23 @@ class _NeighborhoodHelpersMapSheetState
           currentUserPoint ?? (markers.isNotEmpty ? markers.first.point : null),
       helperMarkers: markers,
     );
+  }
+
+  LatLng? _exactPointForUser(UserEntity user) {
+    final exactLatitude = user.exactLatitude;
+    final exactLongitude = user.exactLongitude;
+    if (exactLatitude == null || exactLongitude == null) {
+      return null;
+    }
+
+    if (exactLatitude < -90 ||
+        exactLatitude > 90 ||
+        exactLongitude < -180 ||
+        exactLongitude > 180) {
+      return null;
+    }
+
+    return LatLng(exactLatitude, exactLongitude);
   }
 
   Future<LatLng?> _resolveApproximatePoint(
@@ -2779,11 +2815,15 @@ class _NeighborhoodHelperMarkerData {
     required this.helper,
     required this.point,
     required this.locationLabel,
+    required this.distanceKm,
+    required this.isDistanceApproximate,
   });
 
   final UserEntity helper;
   final LatLng point;
   final String locationLabel;
+  final double? distanceKm;
+  final bool isDistanceApproximate;
 }
 
 class _CurrentNeighborhoodMarker extends StatelessWidget {
@@ -2832,12 +2872,15 @@ class _NeighborhoodHelperMapMarker extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final firstName = marker.helper.fullName.trim().split(' ').first;
+    final distanceLabel = _helperDistanceLabel(marker);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Tooltip(
-        message: '${marker.helper.fullName}\n${marker.locationLabel}',
+        message: distanceLabel == null
+            ? '${marker.helper.fullName}\n${marker.locationLabel}'
+            : '${marker.helper.fullName}\n${marker.locationLabel}\n$distanceLabel',
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -2881,6 +2924,8 @@ class _NeighborhoodHelperListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final helper = marker.helper;
+    final theme = Theme.of(context);
+    final distanceLabel = _helperDistanceLabel(marker);
 
     return Container(
       decoration: BoxDecoration(
@@ -2896,38 +2941,54 @@ class _NeighborhoodHelperListTile extends StatelessWidget {
       ),
       child: ListTile(
         onTap: onTap,
+        isThreeLine: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         leading: _RequesterAvatar(requester: helper, size: 56),
         title: Text(
           helper.fullName,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
         ),
-        subtitle: Text(
-          '${marker.locationLabel} • ${helper.serviceRadiusKm.toStringAsFixed(0)} km radius',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF61726F)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              marker.locationLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF61726F),
+              ),
+            ),
+            if (distanceLabel != null)
+              Text(
+                distanceLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF61726F),
+                ),
+              ),
+          ],
         ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
               helper.trustScore.toStringAsFixed(0),
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
             Text(
               'Trust',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF61726F)),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF61726F),
+              ),
             ),
           ],
         ),
@@ -2936,12 +2997,34 @@ class _NeighborhoodHelperListTile extends StatelessWidget {
   }
 }
 
+String? _helperDistanceLabel(_NeighborhoodHelperMarkerData marker) {
+  final distanceKm = marker.distanceKm;
+  if (distanceKm == null) {
+    return null;
+  }
+
+  final formattedDistance = '${_formatDistanceKm(distanceKm)} km away';
+  if (marker.isDistanceApproximate) {
+    return 'Approx. $formattedDistance';
+  }
+
+  return formattedDistance;
+}
+
 String _buildLocationLabel(String area, String city) {
   final values = <String>[
     area.trim(),
     city.trim(),
   ].where((value) => value.isNotEmpty).toList();
   return values.join(', ');
+}
+
+String _formatDistanceKm(double distanceKm) {
+  if (distanceKm >= 10) {
+    return distanceKm.toStringAsFixed(0);
+  }
+
+  return distanceKm.toStringAsFixed(1);
 }
 
 class _HiddenRequestsScreen extends StatelessWidget {

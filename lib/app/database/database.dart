@@ -172,6 +172,8 @@ class AppDatabase {
       'shortBio': user.shortBio,
       'city': user.city,
       'area': user.area,
+      'exactLatitude': user.exactLatitude,
+      'exactLongitude': user.exactLongitude,
       'verificationBadges': user.verificationBadges
           .map((badge) => badge.name)
           .toList(),
@@ -377,6 +379,8 @@ class AppDatabase {
       shortBio: json['shortBio'] as String? ?? '',
       city: json['city'] as String? ?? '',
       area: json['area'] as String? ?? '',
+      exactLatitude: _readNullableDouble(json['exactLatitude']),
+      exactLongitude: _readNullableDouble(json['exactLongitude']),
       verificationBadges: _parseEnumList(
         VerificationBadge.values,
         json['verificationBadges'],
@@ -728,6 +732,22 @@ class AppDatabase {
     }
 
     return minuteOfDay;
+  }
+
+  double? _readNullableDouble(Object? rawValue) {
+    if (rawValue == null) {
+      return null;
+    }
+
+    if (rawValue is double) {
+      return rawValue;
+    }
+
+    if (rawValue is num) {
+      return rawValue.toDouble();
+    }
+
+    return null;
   }
 
   double _readDouble(Object? rawValue, double fallback) {

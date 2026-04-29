@@ -308,6 +308,8 @@ class AppFirestoreSyncService {
       'shortBio': user.shortBio,
       'city': user.city,
       'area': user.area,
+      'exactLatitude': user.exactLatitude,
+      'exactLongitude': user.exactLongitude,
       'verificationBadges': user.verificationBadges
           .map((badge) => badge.name)
           .toList(),
