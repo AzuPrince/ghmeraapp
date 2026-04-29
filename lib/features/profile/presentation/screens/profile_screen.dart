@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
+import 'blocked_accounts_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../widgets/privacy_session_controls_card.dart';
@@ -446,6 +447,14 @@ class ProfileScreen extends StatelessWidget {
                 icon: Icons.block_rounded,
                 title: '${user.blockedUserIds.length} blocked account(s)',
                 subtitle: '${user.mutedUserIds.length} muted account(s)',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const BlockedAccountsScreen(),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -999,17 +1008,19 @@ class _InfoRow extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Row(
+    Widget content = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
@@ -1044,6 +1055,22 @@ class _InfoRow extends StatelessWidget {
         ),
       ],
     );
+
+    if (onTap != null) {
+      content = Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(5),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4.0),
+            child: content,
+          ),
+        ),
+      );
+    }
+
+    return content;
   }
 }
 

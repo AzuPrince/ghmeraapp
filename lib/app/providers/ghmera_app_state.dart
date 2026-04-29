@@ -889,6 +889,33 @@ class GhmeraAppState extends ChangeNotifier {
     return true;
   }
 
+  bool unblockUserAccount(String userId) {
+    if (userId == _currentUserId) {
+      return false;
+    }
+
+    final blockedUserIds = List<String>.from(currentUser.blockedUserIds);
+    var didChange = false;
+
+    if (blockedUserIds.contains(userId)) {
+      blockedUserIds.remove(userId);
+      didChange = true;
+    }
+
+    if (!didChange) {
+      return false;
+    }
+
+    _replaceUser(
+      currentUser.copyWith(
+        blockedUserIds: blockedUserIds,
+      ),
+    );
+
+    notifyListeners();
+    return true;
+  }
+
   void toggleCurrentUserSupportCircleMembership(String circleId) {
     final index = _supportCircles.indexWhere((circle) => circle.id == circleId);
     if (index == -1) {
