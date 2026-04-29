@@ -16,6 +16,7 @@ enum _CommunityRequestMenuAction { removeFromView, reportAccount, blockAccount }
 enum _MyRequestMenuAction { hideThisRequest, deleteThisRequest }
 
 enum _AcceptedRequestMenuAction {
+  messageReceiver,
   helpFulfilled,
   reportHelpGiver,
   cancelRequest,
@@ -500,6 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _showRequestDetailsSheet(request);
       return;
     }
+    final helperFirstName = helper.fullName.trim().split(' ').first;
 
     final selectedAction =
         await showModalBottomSheet<_AcceptedRequestMenuAction>(
@@ -530,6 +532,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: Theme.of(sheetContext).textTheme.bodyMedium
                             ?.copyWith(color: const Color(0xFF61726F)),
                       ),
+                    ),
+                    _MenuSheetActionTile(
+                      icon: Icons.chat_bubble_outline_rounded,
+                      label: 'Message $helperFirstName',
+                      onTap: () => Navigator.of(
+                        sheetContext,
+                      ).pop(_AcceptedRequestMenuAction.messageReceiver),
                     ),
                     _MenuSheetActionTile(
                       icon: Icons.task_alt_rounded,
@@ -566,6 +575,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     switch (selectedAction) {
+      case _AcceptedRequestMenuAction.messageReceiver:
+        final protectedThread = appState.threadForRequest(request.id);
+        if (protectedThread == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Protected chat with $helperFirstName is not available yet.',
+              ),
+            ),
+          );
+          return;
+        }
+
+        await _showThreadSheet(protectedThread);
+        return;
       case _AcceptedRequestMenuAction.helpFulfilled:
         await _confirmAcceptedRequestFulfilled(request);
         return;
@@ -629,23 +653,61 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    HelpRequestEntity? refreshedRequest;
-    for (final candidate in appState.myRequests) {
-      if (candidate.id == request.id) {
-        refreshedRequest = candidate;
-        break;
+    final refreshedRequest = appState.requestById(request.id);
+    final helpGiver = appState.helperForRequest(refreshedRequest);
+    int? submittedRating;
+    if (confirmed &&
+        helpGiver != null &&
+        refreshedRequest.requesterId == appState.currentUserId &&
+        appState.canCurrentUserSubmitReviewForRequest(refreshedRequest)) {
+      submittedRating = await _showHelpGiverRatingSheet(
+        request: refreshedRequest,
+        helpGiver: helpGiver,
+      );
+      if (!mounted) {
+        return;
       }
     }
+
+    final helpGiverFirstName = helpGiver?.fullName.trim().split(' ').first;
+    final canRateHelpGiverLater =
+        helpGiver != null &&
+        refreshedRequest.requesterId == appState.currentUserId &&
+        appState.canCurrentUserSubmitReviewForRequest(refreshedRequest);
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           !confirmed
               ? 'Help fulfillment could not be updated.'
-              : refreshedRequest?.status == HelpRequestStatus.completed
-              ? 'Both participants confirmed completion. The help giver\'s score and trust increased, and reviews are now open.'
+              : submittedRating != null && helpGiverFirstName != null
+              ? refreshedRequest.status == HelpRequestStatus.completed
+                    ? 'Completion and your $submittedRating-star rating for $helpGiverFirstName were saved. The request is now closed.'
+                    : 'Your help fulfillment confirmation and $submittedRating-star rating for $helpGiverFirstName were saved. The request will close once they confirm too.'
+              : refreshedRequest.status == HelpRequestStatus.completed
+              ? helpGiverFirstName == null
+                    ? 'Both participants confirmed completion. The request is now closed.'
+                    : 'Both participants confirmed completion. You can still rate $helpGiverFirstName from request details.'
+              : canRateHelpGiverLater && helpGiverFirstName != null
+              ? 'Your help fulfillment confirmation was saved. You can rate $helpGiverFirstName now or later.'
               : 'Your help fulfillment confirmation was saved. Once the helper also confirms, their score and trust will increase.',
         ),
       ),
+    );
+  }
+
+  Future<int?> _showHelpGiverRatingSheet({
+    required HelpRequestEntity request,
+    required UserEntity helpGiver,
+  }) {
+    return showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+      ),
+      builder: (_) =>
+          _HelpGiverRatingSheet(request: request, helpGiver: helpGiver),
     );
   }
 
@@ -1242,20 +1304,41 @@ class _RequestDetailsScreen extends StatelessWidget {
       return;
     }
 
-    HelpRequestEntity? refreshedRequest;
-    for (final candidate in appState.myRequests) {
-      if (candidate.id == request.id) {
-        refreshedRequest = candidate;
-        break;
+    final refreshedRequest = appState.requestById(request.id);
+    final helpGiver = appState.helperForRequest(refreshedRequest);
+    int? submittedRating;
+    if (confirmed &&
+        helpGiver != null &&
+        refreshedRequest.requesterId == appState.currentUserId &&
+        appState.canCurrentUserSubmitReviewForRequest(refreshedRequest)) {
+      submittedRating = await _showHelpGiverRatingSheet(
+        context,
+        request: refreshedRequest,
+        helpGiver: helpGiver,
+      );
+      if (!context.mounted) {
+        return;
       }
     }
+
+    final canReviewNow = appState.canCurrentUserSubmitReviewForRequest(
+      refreshedRequest,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           !confirmed
               ? 'Completion could not be updated.'
-              : refreshedRequest?.status == HelpRequestStatus.completed
-              ? 'Both participants confirmed completion. Reviews are now open.'
+              : submittedRating != null
+              ? refreshedRequest.status == HelpRequestStatus.completed
+                    ? 'Completion and your $submittedRating-star rating were saved. The request is now closed.'
+                    : 'Your completion confirmation and $submittedRating-star rating were saved. The request closes after the other participant confirms.'
+              : refreshedRequest.status == HelpRequestStatus.completed
+              ? 'Both participants confirmed completion. The request is now closed.'
+              : canReviewNow
+              ? refreshedRequest.requesterId == appState.currentUserId
+                    ? 'Your completion confirmation was saved. You can rate the help giver now.'
+                    : 'Your completion confirmation was saved. You can leave a review now.'
               : 'Your completion confirmation was saved.',
         ),
       ),
@@ -1267,20 +1350,58 @@ class _RequestDetailsScreen extends StatelessWidget {
     required HelpRequestEntity request,
     required UserEntity reviewee,
   }) async {
-    final submitted = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) =>
-          _ReviewSubmissionSheet(request: request, reviewee: reviewee),
-    );
+    final appState = context.read<GhmeraAppState>();
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final useStarRatingSheet =
+        request.requesterId == appState.currentUserId &&
+        request.acceptedHelperId == reviewee.id;
+    bool submitted;
+    if (useStarRatingSheet) {
+      submitted =
+          await _showHelpGiverRatingSheet(
+            context,
+            request: request,
+            helpGiver: reviewee,
+          ) !=
+          null;
+    } else {
+      submitted =
+          await showModalBottomSheet<bool>(
+            context: context,
+            isScrollControlled: true,
+            builder: (_) =>
+                _ReviewSubmissionSheet(request: request, reviewee: reviewee),
+          ) ==
+          true;
+    }
 
-    if (submitted == true && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Review submitted and saved to your profile metrics.'),
+    if (submitted && context.mounted) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            useStarRatingSheet
+                ? 'Star rating submitted and saved to the help giver profile.'
+                : 'Review submitted and saved to your profile metrics.',
+          ),
         ),
       );
     }
+  }
+
+  Future<int?> _showHelpGiverRatingSheet(
+    BuildContext context, {
+    required HelpRequestEntity request,
+    required UserEntity helpGiver,
+  }) {
+    return showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+      ),
+      builder: (_) =>
+          _HelpGiverRatingSheet(request: request, helpGiver: helpGiver),
+    );
   }
 
   Future<void> _openSafetyReportSheet(
@@ -1302,8 +1423,42 @@ class _RequestDetailsScreen extends StatelessWidget {
     }
   }
 
+  String _requestDetailsSubtitle(HelpRequestEntity request) {
+    final subtitleParts = <String>[request.status.label];
+    final location = request.location.trim();
+    final preferredTime = request.preferredTime.trim();
+    if (location.isNotEmpty) {
+      subtitleParts.add(location);
+    }
+    if (preferredTime.isNotEmpty) {
+      subtitleParts.add(preferredTime);
+    }
+    return subtitleParts.join(' • ');
+  }
+
+  String _actionActorLabel({
+    required GhmeraAppState appState,
+    required UserEntity requester,
+    required UserEntity? helper,
+    required HelpActionLogEntry entry,
+  }) {
+    if (entry.actorId == appState.currentUserId) {
+      return 'You';
+    }
+    if (entry.actorId == requester.id) {
+      return requester.fullName;
+    }
+    if (helper != null && entry.actorId == helper.id) {
+      return helper.fullName;
+    }
+    return 'System';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<GhmeraAppState>();
+    final appBarRequest = appState.requestById(initialRequest.id);
+
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -1312,7 +1467,7 @@ class _RequestDetailsScreen extends StatelessWidget {
         title: uniformAppBarTitle(
           context,
           title: 'Request details',
-          subtitle: 'Timeline, match reasons, and response actions.',
+          subtitle: _requestDetailsSubtitle(appBarRequest),
         ),
       ),
       body: SafeArea(
@@ -1321,6 +1476,7 @@ class _RequestDetailsScreen extends StatelessWidget {
             final request = appState.requestById(initialRequest.id);
             final requester = appState.userById(request.requesterId);
             final helper = appState.helperForRequest(request);
+            final protectedThread = appState.threadForRequest(request.id);
             final helpingMatch = appState.helpingMatches.firstWhereOrNull(
               (candidate) => candidate.requestId == request.id,
             );
@@ -1329,6 +1485,10 @@ class _RequestDetailsScreen extends StatelessWidget {
                   (candidate) => candidate.requestId == request.id,
                 );
             final activeMatch = helpingMatch ?? requesterMatch;
+            final timelineEntries = request.actionLog.toList()
+              ..sort(
+                (first, second) => second.createdAt.compareTo(first.createdAt),
+              );
             final isParticipant = appState.isCurrentUserParticipantForRequest(
               request,
             );
@@ -1336,6 +1496,12 @@ class _RequestDetailsScreen extends StatelessWidget {
                 .hasCurrentUserConfirmedRequestCompletion(request);
             final hasSubmittedReview = appState
                 .hasCurrentUserSubmittedReviewForRequest(request);
+            final canSubmitReview = appState
+                .canCurrentUserSubmitReviewForRequest(request);
+            final requesterCanRateNow =
+                request.requesterId == appState.currentUserId &&
+                canSubmitReview &&
+                !hasSubmittedReview;
             final theme = Theme.of(context);
 
             return ListView(
@@ -1377,6 +1543,10 @@ class _RequestDetailsScreen extends StatelessWidget {
                       ).withValues(alpha: 0.14),
                       textColor: _urgencyColor(request.urgency),
                     ),
+                    _Pill(
+                      label: request.visibility.label,
+                      color: const Color(0xFFF5F1E8),
+                    ),
                     if (request.emotionalSupportMode)
                       const _Pill(
                         label: 'Emotional support',
@@ -1384,6 +1554,11 @@ class _RequestDetailsScreen extends StatelessWidget {
                       ),
                     if (request.isHighRisk)
                       const _Pill(label: 'High risk', color: Color(0xFFFFE9D6)),
+                    if (request.safetyCheckInRequired)
+                      const _Pill(
+                        label: 'Safety check-in',
+                        color: Color(0xFFE8F1FF),
+                      ),
                     if (request.attachmentLabel != null)
                       _Pill(
                         label: request.attachmentLabel!,
@@ -1449,6 +1624,137 @@ class _RequestDetailsScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (timelineEntries.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  Text(
+                    'Request timeline',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(5),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(
+                          color: Color(0x10000000),
+                          blurRadius: 20,
+                          offset: Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        for (
+                          var index = 0;
+                          index < timelineEntries.length;
+                          index++
+                        ) ...[
+                          if (index > 0)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Divider(height: 1),
+                            ),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                margin: const EdgeInsets.only(top: 6),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF103B36),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      timelineEntries[index].action,
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${_actionActorLabel(appState: appState, requester: requester, helper: helper, entry: timelineEntries[index])} • ${_relativeTime(timelineEntries[index].createdAt)}',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: const Color(0xFF61726F),
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+                if (request.acceptedHelperId != null) ...[
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7F3EB),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Contact permissions',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _Pill(
+                              label:
+                                  '${requester.fullName.split(' ').first}: ${request.contactConsentFromRequester ? 'Shared' : 'Pending'}',
+                              color: request.contactConsentFromRequester
+                                  ? const Color(0xFFE7F5ED)
+                                  : const Color(0xFFFFF1D9),
+                            ),
+                            if (helper != null)
+                              _Pill(
+                                label:
+                                    '${helper.fullName.split(' ').first}: ${request.contactConsentFromHelper ? 'Shared' : 'Pending'}',
+                                color: request.contactConsentFromHelper
+                                    ? const Color(0xFFE7F5ED)
+                                    : const Color(0xFFFFF1D9),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          protectedThread == null
+                              ? 'Protected chat has not been created for this request yet.'
+                              : 'Protected chat active • Last message ${_relativeTime(protectedThread.lastMessageAt)}',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: const Color(0xFF586965),
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 if (activeMatch != null && activeMatch.reasons.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   Text(
@@ -1538,8 +1844,17 @@ class _RequestDetailsScreen extends StatelessWidget {
                         const SizedBox(height: 10),
                         Text(
                           hasConfirmedCompletion
-                              ? 'Your completion confirmation is already saved. The request closes after the other participant confirms too.'
-                              : 'When the help is done, confirm completion here. Reviews unlock after both participants confirm.',
+                              ? hasSubmittedReview
+                                    ? request.status ==
+                                              HelpRequestStatus.completed
+                                          ? 'Your completion confirmation and rating are saved.'
+                                          : 'Your completion confirmation and rating are saved. The request closes after the other participant confirms too.'
+                                    : requesterCanRateNow
+                                    ? 'Your completion confirmation is already saved. You can rate the help giver now while the request waits for the other participant to confirm.'
+                                    : 'Your completion confirmation is already saved. The request closes after the other participant confirms too.'
+                              : request.requesterId == appState.currentUserId
+                              ? 'When the help is done, confirm completion here. You can rate the help giver as soon as your confirmation is saved.'
+                              : 'When the help is done, confirm completion here. Reviews open once the request is fully completed.',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: const Color(0xFF586965),
                             height: 1.45,
@@ -1562,12 +1877,18 @@ class _RequestDetailsScreen extends StatelessWidget {
           final isParticipant = appState.isCurrentUserParticipantForRequest(
             request,
           );
+          final chatLabel = otherParticipant == null
+              ? 'Open protected chat'
+              : 'Chat with ${otherParticipant.fullName.split(' ').first}';
           final canStartRequest = appState.canCurrentUserStartRequest(request);
           final canConfirmCompletion = appState
               .canCurrentUserConfirmRequestCompletion(request);
           final canSubmitReview = appState.canCurrentUserSubmitReviewForRequest(
             request,
           );
+          final isHelpGiverRating =
+              request.requesterId == appState.currentUserId &&
+              request.acceptedHelperId == otherParticipant?.id;
           final helperCanVolunteer =
               request.requesterId != appState.currentUserId &&
               request.status != HelpRequestStatus.completed &&
@@ -1612,15 +1933,17 @@ class _RequestDetailsScreen extends StatelessWidget {
                             }
 
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
+                              SnackBar(
                                 content: Text(
-                                  'Chat opens after a helper match is confirmed.',
+                                  otherParticipant == null
+                                      ? 'Chat opens after a helper match is confirmed.'
+                                      : 'Chat with ${otherParticipant.fullName.split(' ').first} opens after the protected thread is ready.',
                                 ),
                               ),
                             );
                           },
                           icon: const Icon(Icons.chat_bubble_outline_rounded),
-                          label: const Text('Chat with the person'),
+                          label: Text(chatLabel),
                           style: chatActionButtonStyle,
                         ),
                       ),
@@ -1707,9 +2030,15 @@ class _RequestDetailsScreen extends StatelessWidget {
                             request: request,
                             reviewee: otherParticipant,
                           ),
-                          icon: const Icon(Icons.rate_review_outlined),
+                          icon: Icon(
+                            isHelpGiverRating
+                                ? Icons.star_rate_rounded
+                                : Icons.rate_review_outlined,
+                          ),
                           label: Text(
-                            'Leave a review for ${otherParticipant.fullName.split(' ').first}',
+                            isHelpGiverRating
+                                ? 'Rate ${otherParticipant.fullName.split(' ').first}'
+                                : 'Leave a review for ${otherParticipant.fullName.split(' ').first}',
                           ),
                         ),
                       ),
@@ -1870,6 +2199,145 @@ class _ReviewSubmissionSheetState extends State<_ReviewSubmissionSheet> {
                 },
                 icon: const Icon(Icons.save_outlined),
                 label: const Text('Submit review'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HelpGiverRatingSheet extends StatefulWidget {
+  const _HelpGiverRatingSheet({required this.request, required this.helpGiver});
+
+  final HelpRequestEntity request;
+  final UserEntity helpGiver;
+
+  @override
+  State<_HelpGiverRatingSheet> createState() => _HelpGiverRatingSheetState();
+}
+
+class _HelpGiverRatingSheetState extends State<_HelpGiverRatingSheet> {
+  int _selectedRating = 0;
+  bool _isSubmitting = false;
+
+  Future<void> _submitRating() async {
+    if (_selectedRating == 0 || _isSubmitting) {
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    final review = await context.read<GhmeraAppState>().submitReviewForRequest(
+      requestId: widget.request.id,
+      helpfulness: _selectedRating,
+      respectfulness: _selectedRating,
+      safety: _selectedRating,
+      reliability: _selectedRating,
+      accuracy: _selectedRating,
+      feedback:
+          'Rated ${widget.helpGiver.fullName} $_selectedRating out of 5 stars after the help was fulfilled.',
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() => _isSubmitting = false);
+    if (review == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Star rating could not be saved.')),
+      );
+      return;
+    }
+
+    Navigator.of(context).pop(_selectedRating);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final firstName = widget.helpGiver.fullName.trim().split(' ').first;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomInset + 16),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Rate $firstName',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Select up to 5 stars for the help giver. This rating updates their average review immediately.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF61726F),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List<Widget>.generate(5, (index) {
+                final starValue = index + 1;
+                final isSelected = starValue <= _selectedRating;
+                return IconButton(
+                  onPressed: _isSubmitting
+                      ? null
+                      : () => setState(() => _selectedRating = starValue),
+                  iconSize: 38,
+                  tooltip: 'Rate $starValue out of 5',
+                  icon: Icon(
+                    isSelected ? Icons.star_rounded : Icons.star_border_rounded,
+                    color: isSelected
+                        ? const Color(0xFFF2B33D)
+                        : const Color(0xFFC8D0CE),
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                _selectedRating == 0
+                    ? 'Tap a star to save the rating.'
+                    : '$_selectedRating / 5 stars selected',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF61726F),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _selectedRating == 0 || _isSubmitting
+                    ? null
+                    : _submitRating,
+                icon: _isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.star_outline_rounded),
+                label: Text(
+                  _isSubmitting ? 'Saving rating...' : 'Save star rating',
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: _isSubmitting
+                    ? null
+                    : () => Navigator.of(context).pop(),
+                child: const Text('Not now'),
               ),
             ),
           ],

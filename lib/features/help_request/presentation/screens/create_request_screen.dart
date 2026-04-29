@@ -26,7 +26,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _locationController = TextEditingController(text: 'Accra');
+  final _locationController = TextEditingController();
   final _preferredTimeController = TextEditingController(
     text: 'Today, 6:00 PM',
   );
@@ -40,6 +40,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   bool _lateNightSupport = false;
   bool _moneyRelated = false;
   bool _emergencyOverride = false;
+  bool _useMyLocation = true;
 
   @override
   void initState() {
@@ -59,6 +60,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _lateNightSupport = initialRequest.lateNightSupport;
       _moneyRelated = initialRequest.moneyRelated;
       _emergencyOverride = initialRequest.emergencyOverride;
+      _useMyLocation = false;
       return;
     }
 
@@ -66,6 +68,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     _emotionalSupportMode =
         widget.startEmotionalMode ||
         widget.initialCategory == RequestCategory.emotionalSupport;
+
+    final userLocation = _buildUserLocation(
+      context.read<GhmeraAppState>().currentUser,
+    );
+    if (userLocation.isNotEmpty) {
+      _locationController.text = userLocation;
+      _useMyLocation = true;
+    } else {
+      _useMyLocation = false;
+    }
   }
 
   @override
@@ -83,6 +95,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final appState = context.watch<GhmeraAppState>();
+    final userLocation = _buildUserLocation(appState.currentUser);
+    if (_useMyLocation &&
+        userLocation.isNotEmpty &&
+        _locationController.text.trim() != userLocation) {
+      _locationController.text = userLocation;
+    }
     final isEditing = widget.initialRequest != null;
     final requestLocked =
         !isEditing && !appState.canCreateRequest && !_allowsExemption;
@@ -282,9 +300,33 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                     LayoutBuilder(
                       builder: (context, constraints) {
                         final stacked = constraints.maxWidth < 640;
+                        final useLocationToggle = SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          value: _useMyLocation,
+                          onChanged: userLocation.isEmpty
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _useMyLocation = value;
+                                    if (value) {
+                                      _locationController.text = userLocation;
+                                    }
+                                  });
+                                },
+                          title: const Text('Use my location by default'),
+                          subtitle: Text(
+                            userLocation.isEmpty
+                                ? 'Add your area or city in your profile to enable this default.'
+                                : _useMyLocation
+                                ? 'Using $userLocation for this request location.'
+                                : 'Location is unlocked. You can edit it manually.',
+                          ),
+                        );
+
                         final locationField = TextFormField(
                           controller: _locationController,
                           textCapitalization: TextCapitalization.words,
+                          readOnly: _useMyLocation,
                           decoration: const InputDecoration(
                             labelText: 'Approximate location',
                             hintText: 'East Legon',
@@ -315,6 +357,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                         if (stacked) {
                           return Column(
                             children: [
+                              useLocationToggle,
+                              const SizedBox(height: 8),
                               locationField,
                               const SizedBox(height: 12),
                               preferredTimeField,
@@ -325,7 +369,15 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                         return Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(child: locationField),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  useLocationToggle,
+                                  const SizedBox(height: 8),
+                                  locationField,
+                                ],
+                              ),
+                            ),
                             const SizedBox(width: 12),
                             Expanded(child: preferredTimeField),
                           ],
@@ -487,6 +539,21 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     }
 
     final appState = context.read<GhmeraAppState>();
+    final userLocation = _buildUserLocation(appState.currentUser);
+    if (_useMyLocation && userLocation.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Your profile location is missing. Uncheck "Use my location by default" to enter a location manually.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final locationValue = _useMyLocation
+        ? userLocation
+        : _locationController.text.trim();
     final isEditing = widget.initialRequest != null;
     if (!isEditing && !appState.canCreateRequest && !_allowsExemption) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -506,7 +573,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             description: _descriptionController.text.trim(),
             category: _category,
             urgency: _urgency,
-            location: _locationController.text.trim(),
+            location: locationValue,
             preferredTime: _preferredTimeController.text.trim(),
             visibility: _visibility,
             attachmentLabel: _attachmentController.text.trim(),
@@ -521,7 +588,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             description: _descriptionController.text.trim(),
             category: _category,
             urgency: _urgency,
-            location: _locationController.text.trim(),
+            location: locationValue,
             preferredTime: _preferredTimeController.text.trim(),
             visibility: _visibility,
             attachmentLabel: _attachmentController.text.trim(),
@@ -557,6 +624,21 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       ),
     );
     Navigator.of(context).pop(savedRequest.id);
+  }
+
+  String _buildUserLocation(UserEntity user) {
+    final area = user.area.trim();
+    final city = user.city.trim();
+    if (area.isNotEmpty && city.isNotEmpty) {
+      if (area.toLowerCase() == city.toLowerCase()) {
+        return area;
+      }
+      return '$area, $city';
+    }
+    if (area.isNotEmpty) {
+      return area;
+    }
+    return city;
   }
 }
 

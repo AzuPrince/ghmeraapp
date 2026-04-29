@@ -671,7 +671,7 @@
                 "reporterId": "user_zainab",
                 "targetType": "request",
                 "targetId": "request_10",
-                "reason": "Fake request",
+                "reason": "Conflicting request details",
                 "details": "Requester posted duplicate emergency support requests with conflicting details.",
                 "status": "open",
                 "createdAt": "2026-04-07T08:50:00Z"

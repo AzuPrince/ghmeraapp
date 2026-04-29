@@ -193,6 +193,21 @@ class GhmeraAppState extends ChangeNotifier {
       }
     }
 
+    final publicUnmatchedRequests =
+        visibleRequestsById.values
+            .where(
+              (request) =>
+                  request.visibility == HelpRequestVisibility.public &&
+                  request.acceptedHelperId == null,
+            )
+            .toList()
+          ..sort(_compareRequests);
+    for (final request in publicUnmatchedRequests) {
+      if (seenRequestIds.add(request.id)) {
+        requests.add(request);
+      }
+    }
+
     return requests;
   }
 
@@ -595,9 +610,14 @@ class GhmeraAppState extends ChangeNotifier {
   }
 
   bool canCurrentUserSubmitReviewForRequest(HelpRequestEntity request) {
+    final requesterCanRateAcceptedHelper =
+        request.requesterId == _currentUserId &&
+        request.requesterCompletionConfirmed;
+
     return isCurrentUserParticipantForRequest(request) &&
-        request.status == HelpRequestStatus.completed &&
         request.acceptedHelperId != null &&
+        (request.status == HelpRequestStatus.completed ||
+            requesterCanRateAcceptedHelper) &&
         !hasCurrentUserSubmittedReviewForRequest(request);
   }
 
@@ -2845,7 +2865,7 @@ class GhmeraAppState extends ChangeNotifier {
         reporterId: 'user_zainab',
         targetType: ReportTargetType.request,
         targetId: 'request_10',
-        reason: 'Fake request',
+        reason: 'Conflicting request details',
         details:
             'Requester posted duplicate emergency support requests with conflicting details.',
         status: ReportStatus.open,

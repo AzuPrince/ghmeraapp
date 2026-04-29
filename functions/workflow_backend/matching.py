@@ -90,10 +90,17 @@ class WorkflowMatchingMixin:
     def can_current_user_submit_review_for_request(
         self, request: dict[str, Any]
     ) -> bool:
+        requester_can_rate_accepted_helper = (
+            request.get('requesterId') == self.current_user_id
+            and bool(request.get('requesterCompletionConfirmed', False))
+        )
         return (
             self.is_current_user_participant_for_request(request)
-            and request.get('status') == 'completed'
             and bool(request.get('acceptedHelperId'))
+            and (
+                request.get('status') == 'completed'
+                or requester_can_rate_accepted_helper
+            )
             and not self.has_current_user_submitted_review_for_request(request)
         )
 
