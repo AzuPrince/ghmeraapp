@@ -1,7 +1,14 @@
 import json
+import sys
+from pathlib import Path
 
 from firebase_admin import initialize_app
 from firebase_functions import https_fn
+
+# Firebase source analysis may load this file from outside the functions/ dir.
+FUNCTIONS_ROOT = Path(__file__).resolve().parent
+if str(FUNCTIONS_ROOT) not in sys.path:
+    sys.path.insert(0, str(FUNCTIONS_ROOT))
 
 from workflow_api import WorkflowError, apply_workflow_operation
 
