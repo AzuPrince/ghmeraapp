@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import '../database/database.dart';
 import '../models/ghmera_models.dart';
 import '../services/app_firestore_sync_service.dart';
+import '../services/backend_workflow_api_service.dart';
 import '../services/request_matching_engine.dart';
 
 class GhmeraAppState extends ChangeNotifier {
@@ -55,6 +56,8 @@ class GhmeraAppState extends ChangeNotifier {
   final AppDatabase _database = AppDatabase.instance;
   final AppFirestoreSyncService _appFirestoreSyncService =
       AppFirestoreSyncService();
+  final BackendWorkflowApiService _backendWorkflowApiService =
+      BackendWorkflowApiService();
   final RequestMatchingEngine _requestMatchingEngine =
       const RequestMatchingEngine();
   StreamSubscription<User?>? _authStateSubscription;
@@ -137,33 +140,35 @@ class GhmeraAppState extends ChangeNotifier {
   }
 
   List<HelpRequestEntity> get requestsNeedingMyHelp {
-    final rankedRequests =
-        _requests
-            .where(_shouldShowCommunityRequest)
-            .map((request) {
-              final requester = _findUserById(request.requesterId);
-              if (requester == null) {
+    final visibleRequestsById = <String, HelpRequestEntity>{
+      for (final request in _requests)
+        if (_shouldShowCommunityRequest(request) &&
+            request.status != HelpRequestStatus.completed &&
+            request.status != HelpRequestStatus.canceled)
+          request.id: request,
+    };
+
+    final rankedMatches =
+        _matches
+            .where(
+              (match) =>
+                  match.helperId == _currentUserId &&
+                  match.status != MatchStatus.declined &&
+                  match.status != MatchStatus.disputed,
+            )
+            .map((match) {
+              final request = visibleRequestsById[match.requestId];
+              if (request == null) {
                 return null;
               }
 
-              final candidate = _requestMatchingEngine.scoreHelper(
-                request: request,
-                requester: requester,
-                helper: currentUser,
-              );
-              if (candidate == null) {
-                return null;
-              }
-
-              return (request: request, candidate: candidate);
+              return (request: request, match: match);
             })
-            .whereType<
-              ({HelpRequestEntity request, HelperMatchCandidate candidate})
-            >()
+            .whereType<({HelpRequestEntity request, HelpMatchEntity match})>()
             .toList()
           ..sort((first, second) {
-            final scoreComparison = second.candidate.score.compareTo(
-              first.candidate.score,
+            final scoreComparison = second.match.score.compareTo(
+              first.match.score,
             );
             if (scoreComparison != 0) {
               return scoreComparison;
@@ -172,7 +177,23 @@ class GhmeraAppState extends ChangeNotifier {
             return _compareRequests(first.request, second.request);
           });
 
-    return rankedRequests.map((entry) => entry.request).toList();
+    final requests = <HelpRequestEntity>[];
+    final seenRequestIds = <String>{};
+
+    for (final entry in rankedMatches) {
+      if (seenRequestIds.add(entry.request.id)) {
+        requests.add(entry.request);
+      }
+    }
+
+    for (final request in visibleRequestsById.values) {
+      if (request.acceptedHelperId == _currentUserId &&
+          seenRequestIds.add(request.id)) {
+        requests.add(request);
+      }
+    }
+
+    return requests;
   }
 
   List<HelpMatchEntity> get matchesForMyRequests {
@@ -721,6 +742,15 @@ class GhmeraAppState extends ChangeNotifier {
     }
   }
 
+  Future<void> refreshHelpRequests() async {
+    final rawDatabase = await _appFirestoreSyncService.loadDatabase();
+    if (rawDatabase == null) {
+      return;
+    }
+
+    _applyRemoteDatabase(rawDatabase, hasPendingWrites: false);
+  }
+
   void toggleCurrentUserProvidedCategory(RequestCategory category) {
     final categories = List<RequestCategory>.from(
       currentUser.helpCategoriesProvided,
@@ -970,7 +1000,7 @@ class GhmeraAppState extends ChangeNotifier {
     }
   }
 
-  void acceptHelpingOpportunity(String matchId) {
+  Future<void> acceptHelpingOpportunity(String matchId) async {
     final matchIndex = _matches.indexWhere((match) => match.id == matchId);
     if (matchIndex == -1) {
       return;
@@ -981,281 +1011,45 @@ class GhmeraAppState extends ChangeNotifier {
       return;
     }
 
-    volunteerForHelpRequest(match.requestId);
+    await volunteerForHelpRequest(match.requestId);
   }
 
-  bool volunteerForHelpRequest(String requestId) {
-    final requestIndex = _requests.indexWhere(
-      (request) => request.id == requestId,
+  Future<bool> volunteerForHelpRequest(String requestId) async {
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'volunteer_for_help_request',
+      payload: <String, dynamic>{'requestId': requestId},
     );
-    if (requestIndex == -1) {
-      return false;
-    }
-
-    final request = _requests[requestIndex];
-    if (request.requesterId == _currentUserId || _isClosedRequest(request)) {
-      return false;
-    }
-
-    if (request.acceptedHelperId == _currentUserId) {
-      return true;
-    }
-
-    if (request.acceptedHelperId != null &&
-        request.acceptedHelperId != _currentUserId) {
-      return false;
-    }
-
-    final helper = currentUser;
-    final requester = _findUserById(request.requesterId);
-    if (requester == null) {
-      return false;
-    }
-
-    final matchCandidate = _requestMatchingEngine.scoreHelper(
-      request: request,
-      requester: requester,
-      helper: helper,
-    );
-    if (matchCandidate == null) {
-      return false;
-    }
-
-    _confirmMatch(
-      request: request,
-      helper: helper,
-      actionActorId: _currentUserId,
-      actionLabel: 'Helper confirmed availability and accepted the request',
-      openerMessage:
-          'I am available and willing to help with this request. Let us coordinate here.',
-      matchCandidate: matchCandidate,
-    );
-    return true;
+    return response?.result?['matched'] == true;
   }
 
-  bool requestHelperForMyRequest({
+  Future<bool> requestHelperForMyRequest({
     required String requestId,
     required String helperId,
-  }) {
-    final requestIndex = _requests.indexWhere(
-      (request) => request.id == requestId,
+  }) async {
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'request_helper_for_my_request',
+      payload: <String, dynamic>{'requestId': requestId, 'helperId': helperId},
     );
-    if (requestIndex == -1) {
-      return false;
-    }
-
-    final request = _requests[requestIndex];
-    if (request.requesterId != _currentUserId || _isClosedRequest(request)) {
-      return false;
-    }
-
-    if (request.acceptedHelperId == helperId) {
-      return true;
-    }
-
-    if (request.acceptedHelperId != null &&
-        request.acceptedHelperId != helperId) {
-      return false;
-    }
-
-    final helper = _findUserById(helperId);
-    if (helper == null) {
-      return false;
-    }
-
-    final matchCandidate = _requestMatchingEngine.scoreHelper(
-      request: request,
-      requester: currentUser,
-      helper: helper,
-    );
-    if (matchCandidate == null) {
-      return false;
-    }
-
-    _confirmMatch(
-      request: request,
-      helper: helper,
-      actionActorId: _currentUserId,
-      actionLabel:
-          'Requester selected ${helper.fullName} from potential helpers and matching was confirmed',
-      openerMessage:
-          'Hi ${helper.fullName.split(' ').first}, I requested a match for this help request.',
-      matchCandidate: matchCandidate,
-    );
-    return true;
+    return response?.result?['matched'] == true;
   }
 
-  bool startCurrentUserRequestWork(String requestId) {
-    final requestIndex = _requests.indexWhere(
-      (candidate) => candidate.id == requestId,
+  Future<bool> startCurrentUserRequestWork(String requestId) async {
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'start_request_work',
+      payload: <String, dynamic>{'requestId': requestId},
     );
-    if (requestIndex == -1) {
-      return false;
-    }
-
-    final request = _requests[requestIndex];
-    if (!canCurrentUserStartRequest(request)) {
-      return false;
-    }
-
-    final now = DateTime.now();
-    final updatedRequest = request.copyWith(
-      status: HelpRequestStatus.inProgress,
-      actionLog: <HelpActionLogEntry>[
-        ...request.actionLog,
-        HelpActionLogEntry(
-          actorId: _currentUserId,
-          action: request.requesterId == _currentUserId
-              ? 'Requester marked the help session as in progress'
-              : 'Helper marked the help session as in progress',
-          createdAt: now,
-        ),
-      ],
-    );
-    _replaceRequest(updatedRequest);
-
-    final acceptedMatch = acceptedMatchForRequest(request);
-    if (acceptedMatch != null) {
-      final matchIndex = _matches.indexWhere(
-        (candidate) => candidate.id == acceptedMatch.id,
-      );
-      if (matchIndex != -1) {
-        _matches[matchIndex] = acceptedMatch.copyWith(
-          status: MatchStatus.inProgress,
-        );
-      }
-    }
-
-    final otherParticipant = otherParticipantForRequest(request);
-    if (otherParticipant != null) {
-      _notifications.insert(
-        0,
-        NotificationEntity(
-          id: 'notification_${_notifications.length + 1}',
-          userId: otherParticipant.id,
-          type: NotificationType.adminUpdate,
-          title: 'Help is now in progress',
-          message:
-              '${currentUser.fullName} marked ${request.title} as in progress.',
-          createdAt: now,
-        ),
-      );
-    }
-
-    notifyListeners();
-    return true;
+    return response?.result?['started'] == true;
   }
 
-  bool confirmCurrentUserRequestCompletion(String requestId) {
-    final requestIndex = _requests.indexWhere(
-      (candidate) => candidate.id == requestId,
+  Future<bool> confirmCurrentUserRequestCompletion(String requestId) async {
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'confirm_request_completion',
+      payload: <String, dynamic>{'requestId': requestId},
     );
-    if (requestIndex == -1) {
-      return false;
-    }
-
-    final request = _requests[requestIndex];
-    if (!canCurrentUserConfirmRequestCompletion(request)) {
-      return false;
-    }
-
-    final now = DateTime.now();
-    final requesterConfirmed = request.requesterId == _currentUserId
-        ? true
-        : request.requesterCompletionConfirmed;
-    final helperConfirmed = request.acceptedHelperId == _currentUserId
-        ? true
-        : request.helperCompletionConfirmed;
-    final fullyCompleted = requesterConfirmed && helperConfirmed;
-    final updatedRequest = request.copyWith(
-      status: fullyCompleted
-          ? HelpRequestStatus.completed
-          : HelpRequestStatus.inProgress,
-      requesterCompletionConfirmed: requesterConfirmed,
-      helperCompletionConfirmed: helperConfirmed,
-      actionLog: <HelpActionLogEntry>[
-        ...request.actionLog,
-        HelpActionLogEntry(
-          actorId: _currentUserId,
-          action: fullyCompleted
-              ? 'Completion was confirmed and the request was closed'
-              : request.requesterId == _currentUserId
-              ? 'Requester confirmed they received the help'
-              : 'Helper confirmed they completed the help',
-          createdAt: now,
-        ),
-      ],
-    );
-    _replaceRequest(updatedRequest);
-
-    final acceptedMatch = acceptedMatchForRequest(request);
-    if (acceptedMatch != null) {
-      final matchIndex = _matches.indexWhere(
-        (candidate) => candidate.id == acceptedMatch.id,
-      );
-      if (matchIndex != -1) {
-        _matches[matchIndex] = acceptedMatch.copyWith(
-          status: fullyCompleted
-              ? MatchStatus.completed
-              : MatchStatus.inProgress,
-          completedAt: fullyCompleted ? now : acceptedMatch.completedAt,
-        );
-      }
-    }
-
-    final otherParticipant = otherParticipantForRequest(request);
-    if (otherParticipant != null) {
-      _notifications.insert(
-        0,
-        NotificationEntity(
-          id: 'notification_${_notifications.length + 1}',
-          userId: otherParticipant.id,
-          type: fullyCompleted
-              ? NotificationType.helpCompleted
-              : NotificationType.adminUpdate,
-          title: fullyCompleted
-              ? 'Help marked complete'
-              : 'Completion confirmation pending',
-          message: fullyCompleted
-              ? '${currentUser.fullName} confirmed ${request.title} is complete. You can now leave a review.'
-              : '${currentUser.fullName} marked ${request.title} as complete. Confirm when you are done so the request can close.',
-          createdAt: now,
-        ),
-      );
-    }
-
-    if (fullyCompleted && request.acceptedHelperId != null) {
-      _notifications.insert(
-        0,
-        NotificationEntity(
-          id: 'notification_${_notifications.length + 1}',
-          userId: request.requesterId,
-          type: NotificationType.helpCompleted,
-          title: 'Request completed',
-          message:
-              '${request.title} was closed after both participants confirmed completion.',
-          createdAt: now,
-        ),
-      );
-      _notifications.insert(
-        0,
-        NotificationEntity(
-          id: 'notification_${_notifications.length + 1}',
-          userId: request.acceptedHelperId!,
-          type: NotificationType.helpCompleted,
-          title: 'Help completed',
-          message:
-              '${request.title} was closed after both participants confirmed completion.',
-          createdAt: now,
-        ),
-      );
-    }
-
-    notifyListeners();
-    return true;
+    return response?.result?['confirmed'] == true;
   }
 
-  ReviewEntity? submitReviewForRequest({
+  Future<ReviewEntity?> submitReviewForRequest({
     required String requestId,
     required int helpfulness,
     required int respectfulness,
@@ -1263,304 +1057,78 @@ class GhmeraAppState extends ChangeNotifier {
     required int reliability,
     required int accuracy,
     required String feedback,
-  }) {
-    final requestIndex = _requests.indexWhere(
-      (candidate) => candidate.id == requestId,
+  }) async {
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'submit_review_for_request',
+      payload: <String, dynamic>{
+        'requestId': requestId,
+        'helpfulness': helpfulness,
+        'respectfulness': respectfulness,
+        'safety': safety,
+        'reliability': reliability,
+        'accuracy': accuracy,
+        'feedback': feedback,
+      },
     );
-    if (requestIndex == -1) {
+    final reviewId = response?.result?['reviewId']?.toString();
+    if (reviewId == null || reviewId.isEmpty) {
       return null;
     }
 
-    final request = _requests[requestIndex];
-    if (!canCurrentUserSubmitReviewForRequest(request)) {
-      return null;
+    for (final review in _reviews) {
+      if (review.id == reviewId) {
+        return review;
+      }
     }
-
-    final acceptedMatch = acceptedMatchForRequest(request);
-    final reviewee = otherParticipantForRequest(request);
-    if (acceptedMatch == null || reviewee == null) {
-      return null;
-    }
-
-    final now = DateTime.now();
-    final normalizedFeedback = feedback.trim();
-    final review = ReviewEntity(
-      id: 'review_${_reviews.length + 1}',
-      matchId: acceptedMatch.id,
-      reviewerId: _currentUserId,
-      revieweeId: reviewee.id,
-      helpfulness: helpfulness.clamp(1, 5),
-      respectfulness: respectfulness.clamp(1, 5),
-      safety: safety.clamp(1, 5),
-      reliability: reliability.clamp(1, 5),
-      accuracy: accuracy.clamp(1, 5),
-      feedback: normalizedFeedback.isEmpty
-          ? 'No written feedback provided.'
-          : normalizedFeedback,
-      createdAt: now,
-      flaggedSuspicious: safety <= 2 || respectfulness <= 2 || reliability <= 2,
-    );
-    _reviews.insert(0, review);
-    _replaceRequest(
-      request.copyWith(
-        actionLog: <HelpActionLogEntry>[
-          ...request.actionLog,
-          HelpActionLogEntry(
-            actorId: _currentUserId,
-            action: 'Submitted a post-help review',
-            createdAt: now,
-          ),
-        ],
-      ),
-    );
-    _notifications.insert(
-      0,
-      NotificationEntity(
-        id: 'notification_${_notifications.length + 1}',
-        userId: reviewee.id,
-        type: NotificationType.adminUpdate,
-        title: 'New review received',
-        message:
-            '${currentUser.fullName} left a review after ${request.title}.',
-        createdAt: now,
-      ),
-    );
-
-    notifyListeners();
-    return review;
+    return null;
   }
 
-  ReportEntity? submitParticipantSafetyReportForRequest({
+  Future<ReportEntity?> submitParticipantSafetyReportForRequest({
     required String requestId,
     required String reason,
     required String details,
-  }) {
-    final requestIndex = _requests.indexWhere(
-      (candidate) => candidate.id == requestId,
+  }) async {
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'submit_participant_safety_report',
+      payload: <String, dynamic>{
+        'requestId': requestId,
+        'reason': reason,
+        'details': details,
+      },
     );
-    if (requestIndex == -1) {
+    final reportId = response?.result?['reportId']?.toString();
+    if (reportId == null || reportId.isEmpty) {
       return null;
     }
 
-    final request = _requests[requestIndex];
-    final reportedUser = otherParticipantForRequest(request);
-    final trimmedReason = reason.trim();
-    if (reportedUser == null || trimmedReason.isEmpty) {
-      return null;
-    }
-
-    final now = DateTime.now();
-    final trimmedDetails = details.trim();
-    final report = ReportEntity(
-      id: 'report_${_reports.length + 1}',
-      reporterId: _currentUserId,
-      targetType: ReportTargetType.user,
-      targetId: reportedUser.id,
-      reason: trimmedReason,
-      details: trimmedDetails.isEmpty
-          ? 'Reported from request ${request.title}.'
-          : 'Request ${request.title}: $trimmedDetails',
-      status: ReportStatus.open,
-      createdAt: now,
-    );
-    _reports.insert(0, report);
-    _replaceRequest(
-      request.copyWith(
-        safetyCheckInRequired: true,
-        actionLog: <HelpActionLogEntry>[
-          ...request.actionLog,
-          HelpActionLogEntry(
-            actorId: _currentUserId,
-            action:
-                'Reported ${reportedUser.fullName} to moderators for a safety concern',
-            createdAt: now,
-          ),
-        ],
-      ),
-    );
-
-    for (var index = 0; index < _threads.length; index++) {
-      final thread = _threads[index];
-      if (thread.requestId != request.id) {
-        continue;
+    for (final report in _reports) {
+      if (report.id == reportId) {
+        return report;
       }
-      _threads[index] = thread.copyWith(flaggedSafetyConcern: true);
     }
-
-    _notifications.insert(
-      0,
-      NotificationEntity(
-        id: 'notification_${_notifications.length + 1}',
-        userId: _currentUserId,
-        type: NotificationType.safetyAlert,
-        title: 'Safety report submitted',
-        message:
-            'Your report about ${reportedUser.fullName} was sent to moderators.',
-        createdAt: now,
-      ),
-    );
-
-    notifyListeners();
-    return report;
+    return null;
   }
 
-  bool _isClosedRequest(HelpRequestEntity request) {
-    return request.status == HelpRequestStatus.completed ||
-        request.status == HelpRequestStatus.canceled;
-  }
-
-  void _confirmMatch({
-    required HelpRequestEntity request,
-    required UserEntity helper,
-    required String actionActorId,
-    required String actionLabel,
-    required String openerMessage,
-    required HelperMatchCandidate matchCandidate,
-  }) {
-    final now = DateTime.now();
-
-    final matchIndex = _matches.indexWhere(
-      (match) => match.requestId == request.id && match.helperId == helper.id,
-    );
-    if (matchIndex == -1) {
-      _matches.insert(
-        0,
-        HelpMatchEntity(
-          id: 'match_${_matches.length + 1}',
-          requesterId: request.requesterId,
-          helperId: helper.id,
-          requestId: request.id,
-          status: MatchStatus.accepted,
-          score: matchCandidate.score,
-          reasons: matchCandidate.reasons,
-          acceptedAt: now,
-        ),
-      );
-    } else {
-      _matches[matchIndex] = _matches[matchIndex].copyWith(
-        status: MatchStatus.accepted,
-        acceptedAt: now,
-        score: matchCandidate.score,
-        reasons: matchCandidate.reasons,
-      );
-    }
-
-    for (var index = 0; index < _matches.length; index++) {
-      final candidate = _matches[index];
-      if (candidate.requestId != request.id ||
-          candidate.helperId == helper.id) {
-        continue;
-      }
-      if (candidate.status == MatchStatus.accepted ||
-          candidate.status == MatchStatus.inProgress ||
-          candidate.status == MatchStatus.completed) {
-        continue;
-      }
-
-      _matches[index] = candidate.copyWith(status: MatchStatus.declined);
-    }
-
-    final requestIndex = _requests.indexWhere(
-      (candidate) => candidate.id == request.id,
-    );
-    if (requestIndex != -1) {
-      final existing = _requests[requestIndex];
-      final suggestedHelperIds = <String>{
-        ...existing.suggestedHelperIds,
-        helper.id,
-      }.toList();
-      _replaceRequest(
-        existing.copyWith(
-          status: HelpRequestStatus.accepted,
-          acceptedHelperId: helper.id,
-          safetyCheckInRequired: existing.isHighRisk,
-          suggestedHelperIds: suggestedHelperIds,
-          actionLog: <HelpActionLogEntry>[
-            ...existing.actionLog,
-            HelpActionLogEntry(
-              actorId: actionActorId,
-              action: actionLabel,
-              createdAt: now,
-            ),
-          ],
-        ),
-      );
-    }
-
-    final chatThread = _ensureProtectedChatThread(
-      request: request,
-      helperId: helper.id,
-      now: now,
-    );
-
-    _messages.add(
-      MessageEntity(
-        id: 'message_${_messages.length + 1}',
-        threadId: chatThread.id,
-        senderId: actionActorId,
-        content: openerMessage,
-        createdAt: now,
-      ),
-    );
-
-    final requester = userById(request.requesterId);
-    _notifications.insert(
-      0,
-      NotificationEntity(
-        id: 'notification_${_notifications.length + 1}',
-        userId: requester.id,
-        type: NotificationType.requestAccepted,
-        title: 'Match confirmed for ${request.title}',
-        message:
-            'You are matched with ${helper.fullName}. Continue inside protected chat.',
-        createdAt: now,
-      ),
-    );
-    _notifications.insert(
-      0,
-      NotificationEntity(
-        id: 'notification_${_notifications.length + 1}',
-        userId: helper.id,
-        type: NotificationType.matchFound,
-        title: 'You were matched with ${requester.fullName}',
-        message:
-            'A help match was confirmed for ${request.title}. Continue inside protected chat.',
-        createdAt: now,
-      ),
-    );
-
-    notifyListeners();
-  }
-
-  void sendMessage({required String threadId, required String content}) {
+  Future<bool> sendMessage({
+    required String threadId,
+    required String content,
+  }) async {
     final trimmedContent = content.trim();
     if (trimmedContent.isEmpty) {
-      return;
+      return false;
     }
 
-    final threadIndex = _threads.indexWhere((thread) => thread.id == threadId);
-    if (threadIndex == -1) {
-      return;
-    }
-
-    final now = DateTime.now();
-    final thread = _threads[threadIndex];
-
-    _messages.add(
-      MessageEntity(
-        id: 'message_${_messages.length + 1}',
-        threadId: threadId,
-        senderId: _currentUserId,
-        content: trimmedContent,
-        createdAt: now,
-      ),
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'send_message',
+      payload: <String, dynamic>{
+        'threadId': threadId,
+        'content': trimmedContent,
+      },
     );
-
-    _threads[threadIndex] = thread.copyWith(lastMessageAt: now);
-    notifyListeners();
+    return response?.result?['messageId'] != null;
   }
 
-  HelpRequestEntity? createHelpRequest({
+  Future<HelpRequestEntity?> createHelpRequest({
     required String title,
     required String description,
     required RequestCategory category,
@@ -1574,102 +1142,39 @@ class GhmeraAppState extends ChangeNotifier {
     required bool lateNightSupport,
     required bool moneyRelated,
     required bool emergencyOverride,
-  }) {
-    final exemptRequest =
-        emergencyOverride || category == RequestCategory.emergencySupport;
-
-    if (!canCreateRequest && !exemptRequest) {
+  }) async {
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'create_help_request',
+      payload: <String, dynamic>{
+        'title': title,
+        'description': description,
+        'category': category.name,
+        'urgency': urgency.name,
+        'location': location,
+        'preferredTime': preferredTime,
+        'visibility': visibility.name,
+        'attachmentLabel': attachmentLabel,
+        'emotionalSupportMode': emotionalSupportMode,
+        'requiresHomeVisit': requiresHomeVisit,
+        'lateNightSupport': lateNightSupport,
+        'moneyRelated': moneyRelated,
+        'emergencyOverride': emergencyOverride,
+      },
+    );
+    final requestId = response?.result?['requestId']?.toString();
+    if (requestId == null || requestId.isEmpty) {
       return null;
     }
 
-    final now = DateTime.now();
-    final requestId = 'request_${_requests.length + 1}';
-    final draftRequest = HelpRequestEntity(
-      id: requestId,
-      requesterId: _currentUserId,
-      title: title,
-      description: description,
-      category: category,
-      urgency: urgency,
-      location: location,
-      preferredTime: preferredTime,
-      visibility: visibility,
-      attachmentLabel: attachmentLabel.isEmpty ? null : attachmentLabel,
-      status: HelpRequestStatus.open,
-      createdAt: now,
-      emotionalSupportMode: emotionalSupportMode,
-      requiresHomeVisit: requiresHomeVisit,
-      lateNightSupport: lateNightSupport,
-      moneyRelated: moneyRelated,
-      emergencyOverride: emergencyOverride,
-      safetyCheckInRequired:
-          category.isHighRisk ||
-          requiresHomeVisit ||
-          lateNightSupport ||
-          moneyRelated,
-      suggestedHelperIds: const <String>[],
-      actionLog: <HelpActionLogEntry>[
-        HelpActionLogEntry(
-          actorId: _currentUserId,
-          action: 'Request created',
-          createdAt: now,
-        ),
-      ],
-    );
-
-    final helperCandidates = _rankedHelperCandidatesForRequest(
-      draftRequest,
-      requester: currentUser,
-    );
-    final request = draftRequest.copyWith(
-      status: helperCandidates.isEmpty
-          ? HelpRequestStatus.open
-          : HelpRequestStatus.matching,
-      suggestedHelperIds: helperCandidates
-          .map((candidate) => candidate.helper.id)
-          .toList(),
-      actionLog: <HelpActionLogEntry>[
-        ...draftRequest.actionLog,
-        if (helperCandidates.isNotEmpty)
-          HelpActionLogEntry(
-            actorId: _currentUserId,
-            action:
-                'Matching engine suggested ${helperCandidates.length} helpers',
-            createdAt: now,
-          ),
-      ],
-    );
-
-    _requests.insert(0, request);
-
-    _syncSuggestedMatchesForRequest(
-      request: request,
-      candidates: helperCandidates,
-    );
-
-    _notifications.insert(
-      0,
-      NotificationEntity(
-        id: 'notification_${_notifications.length + 1}',
-        userId: _currentUserId,
-        type: helperCandidates.isEmpty
-            ? NotificationType.adminUpdate
-            : NotificationType.matchFound,
-        title: helperCandidates.isEmpty
-            ? 'Request submitted for broadcast'
-            : 'Helpers found for your new request',
-        message: helperCandidates.isEmpty
-            ? 'Your request is live and will be broadcast to eligible helpers.'
-            : 'The matching engine found ${helperCandidates.length} helper candidates right away.',
-        createdAt: now,
-      ),
-    );
-
-    notifyListeners();
-    return request;
+    for (final request in _requests) {
+      if (request.id == requestId) {
+        return request;
+      }
+    }
+    return null;
   }
 
-  HelpRequestEntity? updateMyHelpRequest({
+  Future<HelpRequestEntity?> updateMyHelpRequest({
     required String requestId,
     required String title,
     required String description,
@@ -1684,292 +1189,81 @@ class GhmeraAppState extends ChangeNotifier {
     required bool lateNightSupport,
     required bool moneyRelated,
     required bool emergencyOverride,
-  }) {
-    final requestIndex = _requests.indexWhere(
-      (request) => request.id == requestId,
+  }) async {
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'update_help_request',
+      payload: <String, dynamic>{
+        'requestId': requestId,
+        'title': title,
+        'description': description,
+        'category': category.name,
+        'urgency': urgency.name,
+        'location': location,
+        'preferredTime': preferredTime,
+        'visibility': visibility.name,
+        'attachmentLabel': attachmentLabel,
+        'emotionalSupportMode': emotionalSupportMode,
+        'requiresHomeVisit': requiresHomeVisit,
+        'lateNightSupport': lateNightSupport,
+        'moneyRelated': moneyRelated,
+        'emergencyOverride': emergencyOverride,
+      },
     );
-    if (requestIndex == -1) {
+    final updatedRequestId = response?.result?['requestId']?.toString();
+    if (updatedRequestId == null || updatedRequestId.isEmpty) {
       return null;
     }
 
-    final existingRequest = _requests[requestIndex];
-    if (existingRequest.requesterId != _currentUserId) {
-      return null;
-    }
-
-    final now = DateTime.now();
-    final baseUpdatedRequest = existingRequest.copyWith(
-      title: title,
-      description: description,
-      category: category,
-      urgency: urgency,
-      location: location,
-      preferredTime: preferredTime,
-      visibility: visibility,
-      attachmentLabel: attachmentLabel.isEmpty ? null : attachmentLabel,
-      clearAttachment: attachmentLabel.isEmpty,
-      emotionalSupportMode: emotionalSupportMode,
-      requiresHomeVisit: requiresHomeVisit,
-      lateNightSupport: lateNightSupport,
-      moneyRelated: moneyRelated,
-      emergencyOverride: emergencyOverride,
-      safetyCheckInRequired:
-          category.isHighRisk ||
-          requiresHomeVisit ||
-          lateNightSupport ||
-          moneyRelated,
-      suggestedHelperIds: existingRequest.acceptedHelperId == null
-          ? const <String>[]
-          : existingRequest.suggestedHelperIds,
-      actionLog: <HelpActionLogEntry>[
-        ...existingRequest.actionLog,
-        HelpActionLogEntry(
-          actorId: _currentUserId,
-          action: 'Requester updated request details',
-          createdAt: now,
-        ),
-      ],
-    );
-
-    var updatedRequest = baseUpdatedRequest;
-    if (existingRequest.acceptedHelperId == null) {
-      final helperCandidates = _rankedHelperCandidatesForRequest(
-        baseUpdatedRequest,
-        requester: currentUser,
-      );
-      updatedRequest = baseUpdatedRequest.copyWith(
-        status: helperCandidates.isEmpty
-            ? HelpRequestStatus.open
-            : HelpRequestStatus.matching,
-        suggestedHelperIds: helperCandidates
-            .map((candidate) => candidate.helper.id)
-            .toList(),
-        actionLog: <HelpActionLogEntry>[
-          ...baseUpdatedRequest.actionLog,
-          if (helperCandidates.isNotEmpty)
-            HelpActionLogEntry(
-              actorId: _currentUserId,
-              action:
-                  'Matching engine refreshed ${helperCandidates.length} helper suggestions',
-              createdAt: now,
-            ),
-        ],
-      );
-      _syncSuggestedMatchesForRequest(
-        request: updatedRequest,
-        candidates: helperCandidates,
-      );
-    }
-
-    _replaceRequest(updatedRequest);
-    notifyListeners();
-    return updatedRequest;
-  }
-
-  bool deleteMyHelpRequest(String requestId) {
-    final requestIndex = _requests.indexWhere(
-      (request) => request.id == requestId,
-    );
-    if (requestIndex == -1) {
-      return false;
-    }
-
-    final request = _requests[requestIndex];
-    if (request.requesterId != _currentUserId ||
-        request.acceptedHelperId != null) {
-      return false;
-    }
-
-    final removedMatchIds = _matches
-        .where((match) => match.requestId == requestId)
-        .map((match) => match.id)
-        .toSet();
-    final removedThreadIds = _threads
-        .where((thread) => thread.requestId == requestId)
-        .map((thread) => thread.id)
-        .toSet();
-
-    _requests.removeAt(requestIndex);
-    _matches.removeWhere((match) => match.requestId == requestId);
-    _threads.removeWhere((thread) => thread.requestId == requestId);
-    _messages.removeWhere(
-      (message) => removedThreadIds.contains(message.threadId),
-    );
-    _reviews.removeWhere((review) => removedMatchIds.contains(review.matchId));
-    _reports.removeWhere(
-      (report) =>
-          report.targetType == ReportTargetType.request &&
-          report.targetId == requestId,
-    );
-
-    final hiddenRequestIds = List<String>.from(currentUser.hiddenRequestIds)
-      ..remove(requestId);
-    _replaceUser(currentUser.copyWith(hiddenRequestIds: hiddenRequestIds));
-    _notifications.insert(
-      0,
-      NotificationEntity(
-        id: 'notification_${_notifications.length + 1}',
-        userId: _currentUserId,
-        type: NotificationType.adminUpdate,
-        title: 'Request deleted',
-        message: '${request.title} was removed from your requests.',
-        createdAt: DateTime.now(),
-      ),
-    );
-    notifyListeners();
-    return true;
-  }
-
-  bool cancelMyAcceptedRequest(String requestId) {
-    final requestIndex = _requests.indexWhere(
-      (request) => request.id == requestId,
-    );
-    if (requestIndex == -1) {
-      return false;
-    }
-
-    final request = _requests[requestIndex];
-    if (request.requesterId != _currentUserId ||
-        request.acceptedHelperId == null ||
-        request.status == HelpRequestStatus.completed ||
-        request.status == HelpRequestStatus.canceled) {
-      return false;
-    }
-
-    final now = DateTime.now();
-    final updatedRequest = request.copyWith(
-      status: HelpRequestStatus.canceled,
-      actionLog: <HelpActionLogEntry>[
-        ...request.actionLog,
-        HelpActionLogEntry(
-          actorId: _currentUserId,
-          action: 'Requester canceled the accepted help request',
-          createdAt: now,
-        ),
-      ],
-    );
-    _replaceRequest(updatedRequest);
-
-    for (var index = 0; index < _matches.length; index++) {
-      final match = _matches[index];
-      if (match.requestId != requestId ||
-          match.status == MatchStatus.completed ||
-          match.status == MatchStatus.disputed) {
-        continue;
+    for (final request in _requests) {
+      if (request.id == updatedRequestId) {
+        return request;
       }
-
-      _matches[index] = match.copyWith(status: MatchStatus.declined);
     }
-
-    final helperId = request.acceptedHelperId;
-    if (helperId != null) {
-      _notifications.insert(
-        0,
-        NotificationEntity(
-          id: 'notification_${_notifications.length + 1}',
-          userId: helperId,
-          type: NotificationType.adminUpdate,
-          title: 'Request canceled',
-          message:
-              '${currentUser.fullName} canceled ${request.title}. The request is now closed.',
-          createdAt: now,
-        ),
-      );
-    }
-
-    _notifications.insert(
-      0,
-      NotificationEntity(
-        id: 'notification_${_notifications.length + 1}',
-        userId: _currentUserId,
-        type: NotificationType.adminUpdate,
-        title: 'Request canceled',
-        message: '${request.title} was canceled and removed from active help.',
-        createdAt: now,
-      ),
-    );
-
-    notifyListeners();
-    return true;
+    return null;
   }
 
-  ReportEntity? reportUserAccount({
+  Future<bool> deleteMyHelpRequest(String requestId) async {
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'delete_help_request',
+      payload: <String, dynamic>{'requestId': requestId},
+    );
+    return response?.result?['deleted'] == true;
+  }
+
+  Future<bool> cancelMyAcceptedRequest(String requestId) async {
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'cancel_accepted_request',
+      payload: <String, dynamic>{'requestId': requestId},
+    );
+    return response?.result?['canceled'] == true;
+  }
+
+  Future<ReportEntity?> reportUserAccount({
     required String userId,
     required String reason,
     required String details,
     String? requestId,
-  }) {
-    final trimmedReason = reason.trim();
-    if (trimmedReason.isEmpty || userId == _currentUserId) {
+  }) async {
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'report_user_account',
+      payload: <String, dynamic>{
+        'userId': userId,
+        'reason': reason,
+        'details': details,
+        if (requestId != null && requestId.isNotEmpty) 'requestId': requestId,
+      },
+    );
+    final reportId = response?.result?['reportId']?.toString();
+    if (reportId == null || reportId.isEmpty) {
       return null;
     }
 
-    final reportedUser = _findUserById(userId);
-    if (reportedUser == null) {
-      return null;
-    }
-
-    HelpRequestEntity? request;
-    if (requestId != null && requestId.isNotEmpty) {
-      final requestIndex = _requests.indexWhere(
-        (candidate) => candidate.id == requestId,
-      );
-      if (requestIndex != -1) {
-        request = _requests[requestIndex];
+    for (final report in _reports) {
+      if (report.id == reportId) {
+        return report;
       }
     }
-
-    final now = DateTime.now();
-    final trimmedDetails = details.trim();
-    final report = ReportEntity(
-      id: 'report_${_reports.length + 1}',
-      reporterId: _currentUserId,
-      targetType: ReportTargetType.user,
-      targetId: reportedUser.id,
-      reason: trimmedReason,
-      details: trimmedDetails.isEmpty
-          ? request == null
-                ? 'Reported from the account action menu.'
-                : 'Reported from request ${request.title}.'
-          : request == null
-          ? trimmedDetails
-          : 'Request ${request.title}: $trimmedDetails',
-      status: ReportStatus.open,
-      createdAt: now,
-    );
-    _reports.insert(0, report);
-
-    if (request != null) {
-      _replaceRequest(
-        request.copyWith(
-          safetyCheckInRequired: true,
-          actionLog: <HelpActionLogEntry>[
-            ...request.actionLog,
-            HelpActionLogEntry(
-              actorId: _currentUserId,
-              action:
-                  'Reported ${reportedUser.fullName} from the request action menu',
-              createdAt: now,
-            ),
-          ],
-        ),
-      );
-    }
-
-    _notifications.insert(
-      0,
-      NotificationEntity(
-        id: 'notification_${_notifications.length + 1}',
-        userId: _currentUserId,
-        type: NotificationType.safetyAlert,
-        title: 'Account report submitted',
-        message:
-            'Your report about ${reportedUser.fullName} was sent to moderators.',
-        createdAt: now,
-      ),
-    );
-    notifyListeners();
-    return report;
+    return null;
   }
 
   List<HelperMatchCandidate> _rankedHelperCandidatesForRequest(
@@ -1982,73 +1276,6 @@ class GhmeraAppState extends ChangeNotifier {
       users: _users,
       limit: _matchSuggestionLimit,
     );
-  }
-
-  void _syncSuggestedMatchesForRequest({
-    required HelpRequestEntity request,
-    required List<HelperMatchCandidate> candidates,
-  }) {
-    _matches.removeWhere(
-      (match) =>
-          match.requestId == request.id &&
-          match.status != MatchStatus.accepted &&
-          match.status != MatchStatus.inProgress &&
-          match.status != MatchStatus.completed,
-    );
-
-    for (final candidate in candidates.reversed) {
-      _matches.insert(
-        0,
-        HelpMatchEntity(
-          id: 'match_${_matches.length + 1}',
-          requesterId: request.requesterId,
-          helperId: candidate.helper.id,
-          requestId: request.id,
-          status: candidate.isFallbackCandidate
-              ? MatchStatus.broadcast
-              : MatchStatus.suggested,
-          score: candidate.score,
-          reasons: candidate.reasons,
-        ),
-      );
-    }
-  }
-
-  MessageThreadEntity _ensureProtectedChatThread({
-    required HelpRequestEntity request,
-    required String helperId,
-    required DateTime now,
-  }) {
-    final threadIndex = _threads.indexWhere(
-      (thread) =>
-          thread.requestId == request.id &&
-          thread.participantIds.contains(request.requesterId) &&
-          thread.participantIds.contains(helperId),
-    );
-
-    if (threadIndex != -1) {
-      final existingThread = _threads[threadIndex];
-      final updatedThread = existingThread.copyWith(
-        lastMessageAt: now,
-        messageRequestPending: false,
-        flaggedSafetyConcern:
-            existingThread.flaggedSafetyConcern || request.isHighRisk,
-      );
-      _threads[threadIndex] = updatedThread;
-      return updatedThread;
-    }
-
-    final newThread = MessageThreadEntity(
-      id: 'thread_${_threads.length + 1}',
-      requestId: request.id,
-      participantIds: <String>[request.requesterId, helperId],
-      createdAt: now,
-      lastMessageAt: now,
-      messageRequestPending: false,
-      flaggedSafetyConcern: request.isHighRisk,
-    );
-    _threads.insert(0, newThread);
-    return newThread;
   }
 
   int _compareRequests(HelpRequestEntity first, HelpRequestEntity second) {
@@ -2072,8 +1299,41 @@ class GhmeraAppState extends ChangeNotifier {
     _database.replaceUser(updatedUser);
   }
 
-  void _replaceRequest(HelpRequestEntity updatedRequest) {
-    _database.replaceRequest(updatedRequest);
+  Future<BackendWorkflowApiResult?> _applyBackendWorkflowOperation({
+    required String operation,
+    Map<String, dynamic> payload = const <String, dynamic>{},
+  }) async {
+    if (_isHydratingRemoteState) {
+      return null;
+    }
+
+    final localDatabase = _database.toMap(
+      currentUserEmail: _resolvedCurrentUserEmail,
+    );
+
+    try {
+      final response = await _backendWorkflowApiService.applyOperation(
+        operation: operation,
+        currentUserId: _currentUserId,
+        database: localDatabase,
+        payload: payload,
+      );
+
+      _isHydratingRemoteState = true;
+      try {
+        _database.hydrateFromMap(response.database);
+        _currentUserId = _database.currentUserId;
+      } finally {
+        _isHydratingRemoteState = false;
+      }
+
+      notifyListeners();
+      return response;
+    } catch (error, stackTrace) {
+      debugPrint('Workflow API operation "$operation" failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
+    }
   }
 
   void _persistAppState() {

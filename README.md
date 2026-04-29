@@ -32,3 +32,33 @@ Before running on devices, complete these setup steps:
 4. Run `flutterfire configure` (recommended) to generate `firebase_options.dart`.
 5. For Apple sign-in, enable "Sign in with Apple" capability in Xcode for the iOS target.
 6. For iOS phone auth testing, ensure APNs and required URL schemes are configured in the Firebase iOS setup.
+
+## Workflow API Backend
+
+Help-request workflow mutations now go through a Python Firebase Functions HTTPS endpoint named `workflow_api`.
+
+Deploy the backend with:
+
+```bash
+firebase deploy --only functions
+```
+
+By default, the Flutter app calls:
+
+```text
+https://us-central1-<firebase-project-id>.cloudfunctions.net/workflow_api
+```
+
+The project ID is read from `firebase_options.dart`.
+
+If you need to point the app at a different deployed endpoint, pass a Dart define when running the app:
+
+```bash
+flutter run --dart-define=GHMERA_WORKFLOW_API_URL=https://<your-url>/workflow_api
+```
+
+You can also override the function region if needed:
+
+```bash
+flutter run --dart-define=GHMERA_FUNCTIONS_REGION=<region>
+```

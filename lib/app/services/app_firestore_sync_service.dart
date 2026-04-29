@@ -13,6 +13,8 @@ class AppFirestoreSyncService {
       _auth = auth ?? FirebaseAuth.instance;
 
   static const String _trackerCollection = 'user_trackers';
+  static const String _globalAppStateCollection = 'global_app_state';
+  static const String _globalAppStateDocId = 'live';
   static const String _usersSubcollection = 'users';
   static const String _appStateSubcollection = 'app_state';
   static const String _appStateDocId = 'live';
@@ -28,6 +30,11 @@ class AppFirestoreSyncService {
     }
 
     try {
+      final globalDatabase = await _loadGlobalDatabase();
+      if (globalDatabase != null) {
+        return globalDatabase;
+      }
+
       final trackerIdentity = await _resolveTrackerIdentity();
       if (trackerIdentity == null) {
         return null;
@@ -66,45 +73,47 @@ class AppFirestoreSyncService {
     }
 
     final trackerIdentity = await _resolveTrackerIdentity();
-    if (trackerIdentity == null) {
-      return;
-    }
+    final trackerRef = trackerIdentity == null
+        ? null
+        : _trackerRef(trackerIdentity.docId);
 
-    final trackerRef = _trackerRef(trackerIdentity.docId);
-    yield* trackerRef
-        .collection(_appStateSubcollection)
-        .doc(_appStateDocId)
-        .snapshots()
-        .asyncMap((appStateSnapshot) async {
-          try {
-            if (appStateSnapshot.exists) {
-              final rawDatabase = appStateSnapshot.data()?['database'];
-              if (rawDatabase is Map) {
-                return (
-                  database: _normalizeMap(rawDatabase),
-                  hasPendingWrites: appStateSnapshot.metadata.hasPendingWrites,
-                );
-              }
-            }
-
+    yield* _globalAppStateRef().snapshots().asyncMap((appStateSnapshot) async {
+      try {
+        if (appStateSnapshot.exists) {
+          final rawDatabase = appStateSnapshot.data()?['database'];
+          if (rawDatabase is Map) {
             return (
-              database: await _loadFallbackDatabase(
-                trackerRef: trackerRef,
-                authEmail: trackerIdentity.authEmail,
-              ),
-              hasPendingWrites: appStateSnapshot.metadata.hasPendingWrites,
-            );
-          } catch (error, stackTrace) {
-            debugPrint('Firestore app-state watch failed: $error');
-            if (kDebugMode) {
-              debugPrintStack(stackTrace: stackTrace);
-            }
-            return (
-              database: null,
+              database: _normalizeMap(rawDatabase),
               hasPendingWrites: appStateSnapshot.metadata.hasPendingWrites,
             );
           }
-        });
+        }
+
+        if (trackerRef == null) {
+          return (
+            database: null,
+            hasPendingWrites: appStateSnapshot.metadata.hasPendingWrites,
+          );
+        }
+
+        return (
+          database: await _loadFallbackDatabase(
+            trackerRef: trackerRef,
+            authEmail: trackerIdentity?.authEmail,
+          ),
+          hasPendingWrites: appStateSnapshot.metadata.hasPendingWrites,
+        );
+      } catch (error, stackTrace) {
+        debugPrint('Firestore app-state watch failed: $error');
+        if (kDebugMode) {
+          debugPrintStack(stackTrace: stackTrace);
+        }
+        return (
+          database: null,
+          hasPendingWrites: appStateSnapshot.metadata.hasPendingWrites,
+        );
+      }
+    });
   }
 
   Future<bool> syncDatabase({
@@ -159,6 +168,13 @@ class AppFirestoreSyncService {
         },
         SetOptions(merge: true),
       );
+
+      batch.set(_globalAppStateRef(), <String, dynamic>{
+        'database': database,
+        'currentUserId': currentUserId,
+        'schemaVersion': 1,
+        'lastSyncedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
       final userBucket = _userBucketFromDatabase(database, currentUser);
       batch.set(
@@ -269,6 +285,26 @@ class AppFirestoreSyncService {
 
   DocumentReference<Map<String, dynamic>> _trackerRef(String docId) {
     return _firestore.collection(_trackerCollection).doc(docId);
+  }
+
+  DocumentReference<Map<String, dynamic>> _globalAppStateRef() {
+    return _firestore
+        .collection(_globalAppStateCollection)
+        .doc(_globalAppStateDocId);
+  }
+
+  Future<Map<String, dynamic>?> _loadGlobalDatabase() async {
+    final appStateSnapshot = await _globalAppStateRef().get();
+    if (!appStateSnapshot.exists) {
+      return null;
+    }
+
+    final rawDatabase = appStateSnapshot.data()?['database'];
+    if (rawDatabase is Map) {
+      return _normalizeMap(rawDatabase);
+    }
+
+    return null;
   }
 
   Future<String> _getOrCreateDeviceUuid() async {

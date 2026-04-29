@@ -481,7 +481,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     return _emergencyOverride || _category == RequestCategory.emergencySupport;
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -499,7 +499,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       return;
     }
 
-    final savedRequest = isEditing
+    final savedRequest = await (isEditing
         ? appState.updateMyHelpRequest(
             requestId: widget.initialRequest!.id,
             title: _titleController.text.trim(),
@@ -530,7 +530,11 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             lateNightSupport: _lateNightSupport,
             moneyRelated: _moneyRelated,
             emergencyOverride: _emergencyOverride,
-          );
+          ));
+
+    if (!mounted) {
+      return;
+    }
 
     if (savedRequest == null) {
       ScaffoldMessenger.of(context).showSnackBar(

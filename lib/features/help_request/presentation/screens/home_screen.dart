@@ -377,10 +377,13 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectTab(_receiveHelpTabIndex);
     }
 
-    final matched = context.read<GhmeraAppState>().requestHelperForMyRequest(
-      requestId: requestId,
-      helperId: helper.id,
-    );
+    final matched = await context
+        .read<GhmeraAppState>()
+        .requestHelperForMyRequest(requestId: requestId, helperId: helper.id);
+    if (!mounted) {
+      return;
+    }
+
     final helperFirstName = helper.fullName.trim().split(' ').first;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -617,14 +620,26 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final confirmed = appState.confirmCurrentUserRequestCompletion(request.id);
-    final refreshedRequest = appState.requestById(request.id);
+    final confirmed = await appState.confirmCurrentUserRequestCompletion(
+      request.id,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    HelpRequestEntity? refreshedRequest;
+    for (final candidate in appState.myRequests) {
+      if (candidate.id == request.id) {
+        refreshedRequest = candidate;
+        break;
+      }
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           !confirmed
               ? 'Help fulfillment could not be updated.'
-              : refreshedRequest.status == HelpRequestStatus.completed
+              : refreshedRequest?.status == HelpRequestStatus.completed
               ? 'Both participants confirmed completion. The help giver\'s score and trust increased, and reviews are now open.'
               : 'Your help fulfillment confirmation was saved. Once the helper also confirms, their score and trust will increase.',
         ),
@@ -673,7 +688,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final canceled = appState.cancelMyAcceptedRequest(request.id);
+    final canceled = await appState.cancelMyAcceptedRequest(request.id);
+    if (!mounted) {
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -864,7 +883,11 @@ class _HomeScreenState extends State<HomeScreen> {
           return;
         }
 
-        final deleted = appState.deleteMyHelpRequest(request.id);
+        final deleted = await appState.deleteMyHelpRequest(request.id);
+        if (!mounted) {
+          return;
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -971,13 +994,30 @@ class _ThreadScreenState extends State<_ThreadScreen> {
     super.dispose();
   }
 
-  void _sendMessage(GhmeraAppState appState, MessageThreadEntity thread) {
+  Future<void> _sendMessage(
+    GhmeraAppState appState,
+    MessageThreadEntity thread,
+  ) async {
     final content = _messageController.text.trim();
     if (content.isEmpty) {
       return;
     }
 
-    appState.sendMessage(threadId: thread.id, content: content);
+    final sent = await appState.sendMessage(
+      threadId: thread.id,
+      content: content,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    if (!sent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Message could not be sent.')),
+      );
+      return;
+    }
+
     _messageController.clear();
   }
 
@@ -1143,12 +1183,16 @@ class _RequestDetailsScreen extends StatelessWidget {
   final HelpRequestEntity initialRequest;
   final ValueChanged<MessageThreadEntity> onOpenThread;
 
-  void _handleStartRequestWork(
+  Future<void> _handleStartRequestWork(
     BuildContext context,
     GhmeraAppState appState,
     HelpRequestEntity request,
-  ) {
-    final started = appState.startCurrentUserRequestWork(request.id);
+  ) async {
+    final started = await appState.startCurrentUserRequestWork(request.id);
+    if (!context.mounted) {
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -1189,14 +1233,26 @@ class _RequestDetailsScreen extends StatelessWidget {
       return;
     }
 
-    final confirmed = appState.confirmCurrentUserRequestCompletion(request.id);
-    final refreshedRequest = appState.requestById(request.id);
+    final confirmed = await appState.confirmCurrentUserRequestCompletion(
+      request.id,
+    );
+    if (!context.mounted) {
+      return;
+    }
+
+    HelpRequestEntity? refreshedRequest;
+    for (final candidate in appState.myRequests) {
+      if (candidate.id == request.id) {
+        refreshedRequest = candidate;
+        break;
+      }
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           !confirmed
               ? 'Completion could not be updated.'
-              : refreshedRequest.status == HelpRequestStatus.completed
+              : refreshedRequest?.status == HelpRequestStatus.completed
               ? 'Both participants confirmed completion. Reviews are now open.'
               : 'Your completion confirmation was saved.',
         ),
@@ -1572,9 +1628,13 @@ class _RequestDetailsScreen extends StatelessWidget {
                           child: FilledButton.icon(
                             onPressed: alreadyMatchedAsHelper
                                 ? null
-                                : () {
-                                    final matched = appState
+                                : () async {
+                                    final matched = await appState
                                         .volunteerForHelpRequest(request.id);
+                                    if (!context.mounted) {
+                                      return;
+                                    }
+
                                     if (!matched) {
                                       ScaffoldMessenger.of(
                                         context,
@@ -1779,8 +1839,8 @@ class _ReviewSubmissionSheetState extends State<_ReviewSubmissionSheet> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () {
-                  final review = context
+                onPressed: () async {
+                  final review = await context
                       .read<GhmeraAppState>()
                       .submitReviewForRequest(
                         requestId: widget.request.id,
@@ -1791,6 +1851,10 @@ class _ReviewSubmissionSheetState extends State<_ReviewSubmissionSheet> {
                         accuracy: _accuracy,
                         feedback: _feedbackController.text,
                       );
+                  if (!context.mounted) {
+                    return;
+                  }
+
                   if (review == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -1910,8 +1974,8 @@ class _AccountReportSheetState extends State<_AccountReportSheet> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () {
-                  final report = context
+                onPressed: () async {
+                  final report = await context
                       .read<GhmeraAppState>()
                       .reportUserAccount(
                         userId: widget.reportedUser.id,
@@ -1919,6 +1983,10 @@ class _AccountReportSheetState extends State<_AccountReportSheet> {
                         details: _detailsController.text,
                         requestId: widget.request?.id,
                       );
+                  if (!context.mounted) {
+                    return;
+                  }
+
                   if (report == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -2035,14 +2103,18 @@ class _SafetyReportSheetState extends State<_SafetyReportSheet> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () {
-                  final report = context
+                onPressed: () async {
+                  final report = await context
                       .read<GhmeraAppState>()
                       .submitParticipantSafetyReportForRequest(
                         requestId: widget.request.id,
                         reason: _selectedReason,
                         details: _detailsController.text,
                       );
+                  if (!context.mounted) {
+                    return;
+                  }
+
                   if (report == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -2171,57 +2243,136 @@ class _OverviewTab extends StatelessWidget {
     final pendingHelpRequests = allHelpRequests
         .where((request) => request.acceptedHelperId == null)
         .toList();
+    final requestLocationEntries = pendingHelpRequests
+        .map((request) {
+          final requester = appState.otherParticipantForRequest(request);
+          if (requester == null) {
+            return null;
+          }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(10, 12, 10, 28),
+          return _RequestLocationEntry(request: request, requester: requester);
+        })
+        .whereType<_RequestLocationEntry>()
+        .toList();
+
+    return Column(
       children: [
-        const _SectionHeader(
-          title: 'Accepted requests',
-          subtitle: 'People requests you have already accepted to help with.',
-        ),
-        const SizedBox(height: 10),
-        if (acceptedRequests.isNotEmpty)
-          for (final request in acceptedRequests)
-            _OpportunityCard(
-              request: request,
-              onLongPress: onRequestLongPress,
-              onReviewRequest: onReviewOpportunity,
-            ),
-        if (acceptedRequests.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(5),
-            ),
-            child: Text(
-              'No help requested yet.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF61726F)),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () =>
+                context.read<GhmeraAppState>().refreshHelpRequests(),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
+              children: [
+                const _SectionHeader(
+                  title: 'You accepted these requests',
+                  subtitle:
+                      'People requests you have already accepted to help with.',
+                ),
+                const SizedBox(height: 10),
+                if (acceptedRequests.isNotEmpty)
+                  for (final request in acceptedRequests)
+                    _OpportunityCard(
+                      request: request,
+                      onLongPress: onRequestLongPress,
+                      onReviewRequest: onReviewOpportunity,
+                    ),
+                if (acceptedRequests.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      'No help requested yet.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF61726F),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 14),
+                const _SectionHeader(
+                  title: 'Help requests',
+                  subtitle:
+                      'Remaining people requests you have not accepted yet.',
+                ),
+                const SizedBox(height: 10),
+                if (pendingHelpRequests.isEmpty)
+                  const _EmptyStateCard(
+                    title: 'No help requests waiting',
+                    message:
+                        'New requests that match your help profile will appear here.',
+                  )
+                else
+                  for (final request in pendingHelpRequests)
+                    _OpportunityCard(
+                      request: request,
+                      onLongPress: onRequestLongPress,
+                      onReviewRequest: onReviewOpportunity,
+                    ),
+              ],
             ),
           ),
-        const SizedBox(height: 14),
-        const _SectionHeader(
-          title: 'Help requests',
-          subtitle: 'Remaining people requests you have not accepted yet.',
         ),
-        const SizedBox(height: 10),
-        if (pendingHelpRequests.isEmpty)
-          const _EmptyStateCard(
-            title: 'No help requests waiting',
-            message:
-                'New requests that match your help profile will appear here.',
-          )
-        else
-          for (final request in pendingHelpRequests)
-            _OpportunityCard(
-              request: request,
-              onLongPress: onRequestLongPress,
-              onReviewRequest: onReviewOpportunity,
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 12),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FloatingActionButton.extended(
+                heroTag: 'giveHelpRequestLocationsFab',
+                onPressed: () => _showRequestLocationsMapSheet(
+                  context,
+                  currentUser: appState.currentUser,
+                  requestEntries: requestLocationEntries,
+                ),
+                backgroundColor: const Color(0xFF163C38),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                icon: const Icon(Icons.map_outlined),
+                label: const Text('Request locations'),
+              ),
             ),
+          ),
+        ),
       ],
+    );
+  }
+
+  Future<void> _showRequestLocationsMapSheet(
+    BuildContext context, {
+    required UserEntity currentUser,
+    required List<_RequestLocationEntry> requestEntries,
+  }) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      clipBehavior: Clip.antiAlias,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      enableDrag: false,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.78,
+        minChildSize: 0.35,
+        maxChildSize: 1.0,
+        shouldCloseOnMinExtent: true,
+        builder: (context, scrollController) => _RequestLocationsMapSheet(
+          currentUser: currentUser,
+          requestEntries: requestEntries,
+          onSelectRequest: onReviewOpportunity,
+          scrollController: scrollController,
+        ),
+      ),
     );
   }
 }
@@ -2266,7 +2417,7 @@ class _RequestsTab extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
             children: [
               const _SectionHeader(
-                title: 'Accepted requests',
+                title: 'Your requests people accepted',
                 subtitle:
                     'People who already accepted to help with your requests.',
               ),
@@ -2363,13 +2514,22 @@ class _RequestsTab extends StatelessWidget {
       useSafeArea: true,
       clipBehavior: Clip.antiAlias,
       backgroundColor: Theme.of(context).colorScheme.surface,
+      enableDrag: false,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
       ),
-      builder: (context) => _NeighborhoodHelpersMapSheet(
-        currentUser: currentUser,
-        helpers: helpers,
-        onSelectHelper: onSelectHelper,
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.78,
+        minChildSize: 0.35,
+        maxChildSize: 1.0,
+        shouldCloseOnMinExtent: true,
+        builder: (context, scrollController) => _NeighborhoodHelpersMapSheet(
+          currentUser: currentUser,
+          helpers: helpers,
+          onSelectHelper: onSelectHelper,
+          scrollController: scrollController,
+        ),
       ),
     );
   }
@@ -2467,11 +2627,13 @@ class _NeighborhoodHelpersMapSheet extends StatefulWidget {
     required this.currentUser,
     required this.helpers,
     required this.onSelectHelper,
+    required this.scrollController,
   });
 
   final UserEntity currentUser;
   final List<UserEntity> helpers;
   final ValueChanged<UserEntity> onSelectHelper;
+  final ScrollController scrollController;
 
   @override
   State<_NeighborhoodHelpersMapSheet> createState() =>
@@ -2496,20 +2658,18 @@ class _NeighborhoodHelpersMapSheetState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.78,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
-        child: FutureBuilder<_NeighborhoodHelpersMapData>(
-          future: _mapDataFuture,
-          builder: (context, snapshot) {
-            final data = snapshot.data;
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return FutureBuilder<_NeighborhoodHelpersMapData>(
+      future: _mapDataFuture,
+      builder: (context, snapshot) {
+        final data = snapshot.data;
+        final children = <Widget>[
+          SizedBox(
+            height: 40,
+            child: Stack(
+              clipBehavior: Clip.none,
               children: [
-                Center(
+                Align(
+                  alignment: Alignment.topCenter,
                   child: Container(
                     width: 44,
                     height: 4,
@@ -2519,128 +2679,131 @@ class _NeighborhoodHelpersMapSheetState
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'Help giver near you',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
+                Positioned(
+                  top: -6,
+                  right: -6,
+                  child: IconButton(
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  _sheetSubtitle(),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF5C6A67),
-                    height: 1.45,
+              ],
+            ),
+          ),
+          Text(
+            'Help giver near you',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _sheetSubtitle(),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFF5C6A67),
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ];
+
+        if (snapshot.connectionState != ConnectionState.done) {
+          children.add(
+            const SizedBox(
+              height: 280,
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        } else if (snapshot.hasError) {
+          children.add(
+            const _EmptyStateCard(
+              title: 'Map unavailable',
+              message:
+                  'The neighborhood map could not be loaded right now. Try again in a moment.',
+            ),
+          );
+        } else if (data == null || !data.hasMap) {
+          children.add(
+            _EmptyStateCard(
+              title: 'No mappable helpers yet',
+              message: _emptyStateMessage(),
+            ),
+          );
+        } else {
+          children.addAll([
+            ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: SizedBox(
+                height: 320,
+                child: FlutterMap(
+                  options: MapOptions(
+                    initialCenter: data.mapCenter!,
+                    initialZoom: data.helperMarkers.length > 5 ? 11.8 : 12.8,
                   ),
-                ),
-                const SizedBox(height: 12),
-                if (snapshot.connectionState != ConnectionState.done)
-                  const Expanded(
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (snapshot.hasError)
-                  const Expanded(
-                    child: _EmptyStateCard(
-                      title: 'Map unavailable',
-                      message:
-                          'The neighborhood map could not be loaded right now. Try again in a moment.',
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.peatech.ghmera_app',
                     ),
-                  )
-                else if (data == null || !data.hasMap)
-                  Expanded(
-                    child: _EmptyStateCard(
-                      title: 'No mappable helpers yet',
-                      message: _emptyStateMessage(),
-                    ),
-                  )
-                else
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(5),
-                          child: SizedBox(
-                            height: 320,
-                            child: FlutterMap(
-                              options: MapOptions(
-                                initialCenter: data.mapCenter!,
-                                initialZoom: data.helperMarkers.length > 5
-                                    ? 11.8
-                                    : 12.8,
-                              ),
-                              children: [
-                                TileLayer(
-                                  urlTemplate:
-                                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                  userAgentPackageName:
-                                      'com.peatech.ghmera_app',
-                                ),
-                                MarkerLayer(
-                                  markers: [
-                                    if (data.currentUserPoint != null)
-                                      Marker(
-                                        point: data.currentUserPoint!,
-                                        width: 72,
-                                        height: 72,
-                                        child:
-                                            const _CurrentNeighborhoodMarker(),
-                                      ),
-                                    for (final marker in data.helperMarkers)
-                                      Marker(
-                                        point: marker.point,
-                                        width: 88,
-                                        height: 84,
-                                        child: _NeighborhoodHelperMapMarker(
-                                          marker: marker,
-                                          onTap: () =>
-                                              _handleHelperTap(marker.helper),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ],
+                    MarkerLayer(
+                      markers: [
+                        if (data.currentUserPoint != null)
+                          Marker(
+                            point: data.currentUserPoint!,
+                            width: 72,
+                            height: 72,
+                            child: const _CurrentNeighborhoodMarker(),
+                          ),
+                        for (final marker in data.helperMarkers)
+                          Marker(
+                            point: marker.point,
+                            width: 88,
+                            height: 84,
+                            child: _NeighborhoodHelperMapMarker(
+                              marker: marker,
+                              onTap: () => _handleHelperTap(marker.helper),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Approximate locations only. Map data © OpenStreetMap contributors.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF61726F),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Helpers on the map',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Expanded(
-                          child: ListView.separated(
-                            itemCount: data.helperMarkers.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) {
-                              final marker = data.helperMarkers[index];
-                              return _NeighborhoodHelperListTile(
-                                marker: marker,
-                                onTap: () => _handleHelperTap(marker.helper),
-                              );
-                            },
-                          ),
-                        ),
                       ],
                     ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Approximate locations only. Map data © OpenStreetMap contributors.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF61726F),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Helpers on the map',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            for (var index = 0; index < data.helperMarkers.length; index++) ...[
+              _NeighborhoodHelperListTile(
+                marker: data.helperMarkers[index],
+                onTap: () => _handleHelperTap(data.helperMarkers[index].helper),
+              ),
+              if (index < data.helperMarkers.length - 1)
+                const SizedBox(height: 10),
+            ],
+          ]);
+        }
+
+        return ListView(
+          controller: widget.scrollController,
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+          children: children,
+        );
+      },
     );
   }
 
@@ -2942,6 +3105,7 @@ class _NeighborhoodHelperListTile extends StatelessWidget {
       child: ListTile(
         onTap: onTap,
         isThreeLine: true,
+        titleAlignment: ListTileTitleAlignment.center,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         leading: _RequesterAvatar(requester: helper, size: 56),
         title: Text(
@@ -2997,7 +3161,523 @@ class _NeighborhoodHelperListTile extends StatelessWidget {
   }
 }
 
+class _RequestLocationEntry {
+  const _RequestLocationEntry({required this.request, required this.requester});
+
+  final HelpRequestEntity request;
+  final UserEntity requester;
+}
+
+class _RequestLocationsMapSheet extends StatefulWidget {
+  const _RequestLocationsMapSheet({
+    required this.currentUser,
+    required this.requestEntries,
+    required this.onSelectRequest,
+    required this.scrollController,
+  });
+
+  final UserEntity currentUser;
+  final List<_RequestLocationEntry> requestEntries;
+  final ValueChanged<HelpRequestEntity> onSelectRequest;
+  final ScrollController scrollController;
+
+  @override
+  State<_RequestLocationsMapSheet> createState() =>
+      _RequestLocationsMapSheetState();
+}
+
+class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
+  late final Future<_RequestLocationsMapData> _mapDataFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _mapDataFuture = _loadRequestMapData();
+  }
+
+  void _handleRequestTap(HelpRequestEntity request) {
+    Navigator.of(context).pop();
+    widget.onSelectRequest(request);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return FutureBuilder<_RequestLocationsMapData>(
+      future: _mapDataFuture,
+      builder: (context, snapshot) {
+        final data = snapshot.data;
+        final children = <Widget>[
+          SizedBox(
+            height: 40,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: Container(
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD0D7DF),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: -6,
+                  right: -6,
+                  child: IconButton(
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            'Request locations',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _sheetSubtitle(),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFF5C6A67),
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ];
+
+        if (snapshot.connectionState != ConnectionState.done) {
+          children.add(
+            const SizedBox(
+              height: 280,
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        } else if (snapshot.hasError) {
+          children.add(
+            const _EmptyStateCard(
+              title: 'Map unavailable',
+              message:
+                  'The request locations map could not be loaded right now. Try again in a moment.',
+            ),
+          );
+        } else if (data == null || !data.hasMap) {
+          children.add(
+            _EmptyStateCard(
+              title: 'No mappable requests yet',
+              message: _emptyStateMessage(),
+            ),
+          );
+        } else {
+          children.addAll([
+            ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: SizedBox(
+                height: 320,
+                child: FlutterMap(
+                  options: MapOptions(
+                    initialCenter: data.mapCenter!,
+                    initialZoom: data.requestMarkers.length > 5 ? 11.8 : 12.8,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.peatech.ghmera_app',
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        if (data.currentUserPoint != null)
+                          Marker(
+                            point: data.currentUserPoint!,
+                            width: 72,
+                            height: 72,
+                            child: const _CurrentNeighborhoodMarker(),
+                          ),
+                        for (final marker in data.requestMarkers)
+                          Marker(
+                            point: marker.point,
+                            width: 88,
+                            height: 84,
+                            child: _RequestLocationMapMarker(
+                              marker: marker,
+                              onTap: () => _handleRequestTap(marker.request),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Approximate locations only. Map data © OpenStreetMap contributors.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF61726F),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Requests on the map',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            for (
+              var index = 0;
+              index < data.requestMarkers.length;
+              index++
+            ) ...[
+              _RequestLocationListTile(
+                marker: data.requestMarkers[index],
+                onTap: () =>
+                    _handleRequestTap(data.requestMarkers[index].request),
+              ),
+              if (index < data.requestMarkers.length - 1)
+                const SizedBox(height: 10),
+            ],
+          ]);
+        }
+
+        return ListView(
+          controller: widget.scrollController,
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+          children: children,
+        );
+      },
+    );
+  }
+
+  Future<_RequestLocationsMapData> _loadRequestMapData() async {
+    final cache = <String, LatLng>{};
+    final duplicateCounts = <String, int>{};
+    final currentUserExactPoint = _exactPointForUser(widget.currentUser);
+    final currentUserApproximatePoint = await _resolvePointFromQuery(
+      _buildLocationLabel(widget.currentUser.area, widget.currentUser.city),
+      cache: cache,
+    );
+    final currentUserDistancePoint =
+        currentUserExactPoint ?? currentUserApproximatePoint;
+    final currentUserPoint =
+        currentUserApproximatePoint ?? currentUserExactPoint;
+
+    final markers = <_RequestLocationMarkerData>[];
+    for (final entry in widget.requestEntries) {
+      final locationLabel = entry.request.location.trim();
+      if (locationLabel.isEmpty) {
+        continue;
+      }
+
+      final approximatePoint = await _resolvePointFromQuery(
+        locationLabel,
+        cache: cache,
+      );
+      if (approximatePoint == null) {
+        continue;
+      }
+
+      final distanceKm = currentUserDistancePoint == null
+          ? null
+          : const Distance().as(
+              LengthUnit.Kilometer,
+              currentUserDistancePoint,
+              approximatePoint,
+            );
+
+      final duplicateIndex = duplicateCounts.update(
+        locationLabel,
+        (value) => value + 1,
+        ifAbsent: () => 0,
+      );
+
+      markers.add(
+        _RequestLocationMarkerData(
+          request: entry.request,
+          requester: entry.requester,
+          point: _offsetPoint(approximatePoint, duplicateIndex),
+          locationLabel: locationLabel,
+          distanceKm: distanceKm,
+          isDistanceApproximate: distanceKm != null,
+        ),
+      );
+    }
+
+    return _RequestLocationsMapData(
+      currentUserPoint: currentUserPoint,
+      mapCenter:
+          currentUserPoint ?? (markers.isNotEmpty ? markers.first.point : null),
+      requestMarkers: markers,
+    );
+  }
+
+  LatLng? _exactPointForUser(UserEntity user) {
+    final exactLatitude = user.exactLatitude;
+    final exactLongitude = user.exactLongitude;
+    if (exactLatitude == null || exactLongitude == null) {
+      return null;
+    }
+
+    if (exactLatitude < -90 ||
+        exactLatitude > 90 ||
+        exactLongitude < -180 ||
+        exactLongitude > 180) {
+      return null;
+    }
+
+    return LatLng(exactLatitude, exactLongitude);
+  }
+
+  Future<LatLng?> _resolvePointFromQuery(
+    String query, {
+    required Map<String, LatLng> cache,
+  }) async {
+    final normalizedQuery = query.trim();
+    if (normalizedQuery.isEmpty) {
+      return null;
+    }
+
+    final cachedPoint = cache[normalizedQuery];
+    if (cachedPoint != null) {
+      return cachedPoint;
+    }
+
+    try {
+      final locations = await locationFromAddress(normalizedQuery);
+      if (locations.isEmpty) {
+        return null;
+      }
+
+      final point = LatLng(locations.first.latitude, locations.first.longitude);
+      cache[normalizedQuery] = point;
+      return point;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  LatLng _offsetPoint(LatLng point, int index) {
+    const offsets = <Offset>[
+      Offset(0, 0),
+      Offset(0.0024, 0.0012),
+      Offset(-0.0022, 0.0012),
+      Offset(0.0024, -0.0012),
+      Offset(-0.0022, -0.0012),
+      Offset(0.0036, 0),
+    ];
+
+    final offset = offsets[index % offsets.length];
+    return LatLng(point.latitude + offset.dy, point.longitude + offset.dx);
+  }
+
+  String _sheetSubtitle() {
+    if (!_hasLocation(widget.currentUser)) {
+      return 'Tap a request on the map to review it. Add your city or area to compare distances.';
+    }
+
+    return 'Tap a request on the map to review it.';
+  }
+
+  String _emptyStateMessage() {
+    if (widget.requestEntries.isEmpty) {
+      return 'No open help requests with visible locations are ready to map right now.';
+    }
+
+    return 'Open help requests were found, but their map positions could not be resolved yet.';
+  }
+
+  bool _hasLocation(UserEntity user) {
+    return user.area.trim().isNotEmpty || user.city.trim().isNotEmpty;
+  }
+}
+
+class _RequestLocationsMapData {
+  const _RequestLocationsMapData({
+    required this.currentUserPoint,
+    required this.mapCenter,
+    required this.requestMarkers,
+  });
+
+  final LatLng? currentUserPoint;
+  final LatLng? mapCenter;
+  final List<_RequestLocationMarkerData> requestMarkers;
+
+  bool get hasMap => mapCenter != null && requestMarkers.isNotEmpty;
+}
+
+class _RequestLocationMarkerData {
+  const _RequestLocationMarkerData({
+    required this.request,
+    required this.requester,
+    required this.point,
+    required this.locationLabel,
+    required this.distanceKm,
+    required this.isDistanceApproximate,
+  });
+
+  final HelpRequestEntity request;
+  final UserEntity requester;
+  final LatLng point;
+  final String locationLabel;
+  final double? distanceKm;
+  final bool isDistanceApproximate;
+}
+
+class _RequestLocationMapMarker extends StatelessWidget {
+  const _RequestLocationMapMarker({required this.marker, required this.onTap});
+
+  final _RequestLocationMarkerData marker;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final firstName = marker.requester.fullName.trim().split(' ').first;
+    final distanceLabel = _requestDistanceLabel(marker);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Tooltip(
+        message: distanceLabel == null
+            ? '${marker.request.title}\n${marker.requester.fullName}\n${marker.locationLabel}'
+            : '${marker.request.title}\n${marker.requester.fullName}\n${marker.locationLabel}\n$distanceLabel',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Text(
+                firstName,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: theme.colorScheme.onPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.location_on_rounded,
+              color: theme.colorScheme.primary,
+              size: 28,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RequestLocationListTile extends StatelessWidget {
+  const _RequestLocationListTile({required this.marker, required this.onTap});
+
+  final _RequestLocationMarkerData marker;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final distanceLabel = _requestDistanceLabel(marker);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(5),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x10000000),
+            blurRadius: 14,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ListTile(
+        onTap: onTap,
+        isThreeLine: true,
+        titleAlignment: ListTileTitleAlignment.center,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        leading: _RequesterAvatar(requester: marker.requester, size: 56),
+        title: Text(
+          marker.request.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              marker.locationLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF61726F),
+              ),
+            ),
+            if (distanceLabel != null)
+              Text(
+                distanceLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF61726F),
+                ),
+              ),
+          ],
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              marker.request.urgency.label,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Text(
+              'Urgency',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF61726F),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 String? _helperDistanceLabel(_NeighborhoodHelperMarkerData marker) {
+  final distanceKm = marker.distanceKm;
+  if (distanceKm == null) {
+    return null;
+  }
+
+  final formattedDistance = '${_formatDistanceKm(distanceKm)} km away';
+  if (marker.isDistanceApproximate) {
+    return 'Approx. $formattedDistance';
+  }
+
+  return formattedDistance;
+}
+
+String? _requestDistanceLabel(_RequestLocationMarkerData marker) {
   final distanceKm = marker.distanceKm;
   if (distanceKm == null) {
     return null;
