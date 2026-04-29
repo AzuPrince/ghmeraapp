@@ -15,6 +15,8 @@ class AppFirestoreSyncService {
   static const String _trackerCollection = 'user_trackers';
   static const String _globalAppStateCollection = 'global_app_state';
   static const String _globalAppStateDocId = 'live';
+  static const String _usersRequestsCollection = 'Users_requests';
+  static const String _sentRequestsDocId = 'sent request';
   static const String _usersSubcollection = 'users';
   static const String _appStateSubcollection = 'app_state';
   static const String _appStateDocId = 'live';
@@ -30,9 +32,13 @@ class AppFirestoreSyncService {
     }
 
     try {
+      final mirroredRequestBuckets = await _loadMirroredRequestBuckets();
       final globalDatabase = await _loadGlobalDatabase();
       if (globalDatabase != null) {
-        return globalDatabase;
+        return _mergeMirroredRequestsIntoDatabase(
+          globalDatabase,
+          mirroredRequestBuckets,
+        );
       }
 
       final trackerIdentity = await _resolveTrackerIdentity();
@@ -49,13 +55,24 @@ class AppFirestoreSyncService {
       if (appStateSnapshot.exists) {
         final rawDatabase = appStateSnapshot.data()?['database'];
         if (rawDatabase is Map) {
-          return _normalizeMap(rawDatabase);
+          return _mergeMirroredRequestsIntoDatabase(
+            _normalizeMap(rawDatabase),
+            mirroredRequestBuckets,
+          );
         }
       }
 
-      return _loadFallbackDatabase(
+      final fallbackDatabase = await _loadFallbackDatabase(
         trackerRef: trackerRef,
         authEmail: trackerIdentity.authEmail,
+      );
+      if (fallbackDatabase == null) {
+        return null;
+      }
+
+      return _mergeMirroredRequestsIntoDatabase(
+        fallbackDatabase,
+        mirroredRequestBuckets,
       );
     } catch (error, stackTrace) {
       debugPrint('Firestore app-state load failed: $error');
@@ -79,11 +96,15 @@ class AppFirestoreSyncService {
 
     yield* _globalAppStateRef().snapshots().asyncMap((appStateSnapshot) async {
       try {
+        final mirroredRequestBuckets = await _loadMirroredRequestBuckets();
         if (appStateSnapshot.exists) {
           final rawDatabase = appStateSnapshot.data()?['database'];
           if (rawDatabase is Map) {
             return (
-              database: _normalizeMap(rawDatabase),
+              database: _mergeMirroredRequestsIntoDatabase(
+                _normalizeMap(rawDatabase),
+                mirroredRequestBuckets,
+              ),
               hasPendingWrites: appStateSnapshot.metadata.hasPendingWrites,
             );
           }
@@ -96,11 +117,18 @@ class AppFirestoreSyncService {
           );
         }
 
+        final fallbackDatabase = await _loadFallbackDatabase(
+          trackerRef: trackerRef,
+          authEmail: trackerIdentity?.authEmail,
+        );
+
         return (
-          database: await _loadFallbackDatabase(
-            trackerRef: trackerRef,
-            authEmail: trackerIdentity?.authEmail,
-          ),
+          database: fallbackDatabase == null
+              ? null
+              : _mergeMirroredRequestsIntoDatabase(
+                  fallbackDatabase,
+                  mirroredRequestBuckets,
+                ),
           hasPendingWrites: appStateSnapshot.metadata.hasPendingWrites,
         );
       } catch (error, stackTrace) {
@@ -175,6 +203,19 @@ class AppFirestoreSyncService {
         'schemaVersion': 1,
         'lastSyncedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      final mirroredRequestBuckets = _mirroredRequestBucketsFromDatabase(
+        database,
+      );
+      batch.set(_sentRequestsRef(), <String, dynamic>{
+        'lastSyncedAt': FieldValue.serverTimestamp(),
+        for (final entry in mirroredRequestBuckets.entries)
+          entry.key: <String, dynamic>{
+            'requesterEmail': entry.value.requesterEmail,
+            'requesterId': entry.value.requesterId,
+            'requests': entry.value.requests,
+          },
+      });
 
       final userBucket = _userBucketFromDatabase(database, currentUser);
       batch.set(
@@ -293,6 +334,12 @@ class AppFirestoreSyncService {
         .doc(_globalAppStateDocId);
   }
 
+  DocumentReference<Map<String, dynamic>> _sentRequestsRef() {
+    return _firestore
+        .collection(_usersRequestsCollection)
+        .doc(_sentRequestsDocId);
+  }
+
   Future<Map<String, dynamic>?> _loadGlobalDatabase() async {
     final appStateSnapshot = await _globalAppStateRef().get();
     if (!appStateSnapshot.exists) {
@@ -305,6 +352,45 @@ class AppFirestoreSyncService {
     }
 
     return null;
+  }
+
+  Future<Map<String, _MirroredRequestBucket>>
+  _loadMirroredRequestBuckets() async {
+    final requestsSnapshot = await _sentRequestsRef().get();
+    final mirroredRequestBuckets = <String, _MirroredRequestBucket>{};
+
+    if (!requestsSnapshot.exists) {
+      return mirroredRequestBuckets;
+    }
+
+    final mirroredRequestsData = requestsSnapshot.data();
+    if (mirroredRequestsData == null) {
+      return mirroredRequestBuckets;
+    }
+
+    for (final entry in mirroredRequestsData.entries) {
+      if (entry.key == 'lastSyncedAt' || entry.value is! Map) {
+        continue;
+      }
+
+      final requestData = _normalizeMap(entry.value as Map<dynamic, dynamic>);
+      final requesterEmail = (requestData['requesterEmail'] as String?)
+          ?.trim()
+          .toLowerCase();
+      final requesterId = (requestData['requesterId'] as String?)?.trim();
+      final requests = _serializedList(requestData['requests']);
+      if (requests.isEmpty) {
+        continue;
+      }
+
+      mirroredRequestBuckets[entry.key] = _MirroredRequestBucket(
+        requesterEmail: requesterEmail,
+        requesterId: requesterId,
+        requests: requests,
+      );
+    }
+
+    return mirroredRequestBuckets;
   }
 
   Future<String> _getOrCreateDeviceUuid() async {
@@ -421,6 +507,92 @@ class AppFirestoreSyncService {
 
     return const <Object?>[];
   }
+
+  Map<String, _MirroredRequestBucket> _mirroredRequestBucketsFromDatabase(
+    Map<String, dynamic> database,
+  ) {
+    final mirroredRequestBuckets = <String, _MirroredRequestBucket>{};
+
+    for (final entry in database.entries) {
+      if (entry.key.startsWith('_') || entry.value is! Map) {
+        continue;
+      }
+
+      final bucket = _normalizeMap(entry.value as Map<dynamic, dynamic>);
+      final rawUser = bucket['user'];
+      if (rawUser is! Map) {
+        continue;
+      }
+
+      final user = _normalizeMap(rawUser);
+      final requesterEmail = (user['email'] as String?)?.trim().toLowerCase();
+      final requesterId = (user['id'] as String?)?.trim();
+      final requests = _serializedList(bucket['requests']);
+      if (requests.isEmpty) {
+        continue;
+      }
+
+      final docId = (requesterEmail != null && requesterEmail.isNotEmpty)
+          ? requesterEmail
+          : requesterId;
+      if (docId == null || docId.isEmpty) {
+        continue;
+      }
+
+      mirroredRequestBuckets[docId] = _MirroredRequestBucket(
+        requesterEmail: requesterEmail,
+        requesterId: requesterId,
+        requests: requests,
+      );
+    }
+
+    return mirroredRequestBuckets;
+  }
+
+  Map<String, dynamic> _mergeMirroredRequestsIntoDatabase(
+    Map<String, dynamic> database,
+    Map<String, _MirroredRequestBucket> mirroredRequestBuckets,
+  ) {
+    if (mirroredRequestBuckets.isEmpty) {
+      return database;
+    }
+
+    final mergedDatabase = <String, dynamic>{};
+    for (final entry in database.entries) {
+      if (entry.key.startsWith('_') || entry.value is! Map) {
+        mergedDatabase[entry.key] = entry.value;
+        continue;
+      }
+
+      final bucket = _normalizeMap(entry.value as Map<dynamic, dynamic>);
+      final rawUser = bucket['user'];
+      if (rawUser is! Map) {
+        mergedDatabase[entry.key] = bucket;
+        continue;
+      }
+
+      final user = _normalizeMap(rawUser);
+      final requesterEmail = (user['email'] as String?)?.trim().toLowerCase();
+      final requesterId = (user['id'] as String?)?.trim();
+      final mirroredBucket =
+          (requesterEmail != null && requesterEmail.isNotEmpty)
+          ? mirroredRequestBuckets[requesterEmail]
+          : null;
+      final resolvedMirroredBucket =
+          mirroredBucket ??
+          ((requesterId != null && requesterId.isNotEmpty)
+              ? mirroredRequestBuckets[requesterId]
+              : null);
+
+      mergedDatabase[entry.key] = <String, dynamic>{
+        ...bucket,
+        if (resolvedMirroredBucket != null)
+          'requests': resolvedMirroredBucket.requests,
+      };
+    }
+
+    return mergedDatabase;
+  }
 }
 
 class _TrackerIdentity {
@@ -437,4 +609,16 @@ class _TrackerIdentity {
   final String docId;
   final String? authEmail;
   final String deviceUuid;
+}
+
+class _MirroredRequestBucket {
+  const _MirroredRequestBucket({
+    required this.requesterEmail,
+    required this.requesterId,
+    required this.requests,
+  });
+
+  final String? requesterEmail;
+  final String? requesterId;
+  final List<Object?> requests;
 }

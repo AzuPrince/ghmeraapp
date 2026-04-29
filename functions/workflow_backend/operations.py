@@ -349,17 +349,49 @@ class WorkflowOperationsMixin:
         if helper is None:
             raise WorkflowError('The selected helper was not found.', status_code=404)
 
+        requester = self.current_user()
+
         match_candidate = self.score_helper(
             request=request,
-            requester=self.current_user(),
+            requester=requester,
             helper=helper,
             allow_urgency_fallback=False,
         )
         if match_candidate is None:
-            raise WorkflowError(
-                'The selected helper no longer qualifies for this request.',
-                status_code=409,
-            )
+            if helper.get('id') == requester.get('id'):
+                raise WorkflowError(
+                    'You cannot request yourself for help.',
+                    status_code=409,
+                )
+            if not self.can_users_interact(requester, helper) or not self.is_active_helper(
+                helper
+            ):
+                raise WorkflowError(
+                    'The selected helper is not available for this request right now.',
+                    status_code=409,
+                )
+            if self.is_high_risk_request(request) and not self.is_high_risk_qualified(
+                helper
+            ):
+                raise WorkflowError(
+                    'The selected helper does not meet the safety requirements for this request.',
+                    status_code=409,
+                )
+
+            direct_request_reasons = ['Requested directly by the requester']
+            helper_area = str(helper.get('area', '')).strip()
+            helper_city = str(helper.get('city', '')).strip()
+            if helper_area:
+                direct_request_reasons.append(f'Near {helper_area}')
+            elif helper_city:
+                direct_request_reasons.append(f'Based in {helper_city}')
+
+            match_candidate = {
+                'helper': helper,
+                'score': 15.0,
+                'reasons': self.dedupe_reasons(direct_request_reasons),
+                'isFallbackCandidate': True,
+            }
 
         self.confirm_match(
             request=request,
