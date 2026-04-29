@@ -229,23 +229,25 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _titles[_currentIndex],
-          style: uniformHeadingTextStyle(
-            context,
-          ).copyWith(color: Theme.of(context).colorScheme.primary),
+    return SizedBox(
+      height: 50,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Image.asset(
+          'assets/branding/ghmera_app_icon_foreground.png',
+          width: 48,
+          height: 48,
+          fit: BoxFit.contain,
+          color: Theme.of(context).appBarTheme.foregroundColor,
+          colorBlendMode: BlendMode.srcIn,
+          errorBuilder: (context, error, stackTrace) => Text(
+            _titles[_currentIndex],
+            style: uniformHeadingTextStyle(
+              context,
+            ).copyWith(color: Theme.of(context).colorScheme.primary),
+          ),
         ),
-        Text(
-          _subtitles[_currentIndex],
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: const Color(0xFF596865)),
-        ),
-      ],
+      ),
     );
   }
 
