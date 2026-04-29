@@ -34,7 +34,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   late RequestCategory _category;
   UrgencyLevel _urgency = UrgencyLevel.medium;
-  HelpRequestVisibility _visibility = HelpRequestVisibility.restricted;
   late bool _emotionalSupportMode;
   bool _requiresHomeVisit = false;
   bool _lateNightSupport = false;
@@ -54,7 +53,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _attachmentController.text = initialRequest.attachmentLabel ?? '';
       _category = initialRequest.category;
       _urgency = initialRequest.urgency;
-      _visibility = initialRequest.visibility;
       _emotionalSupportMode = initialRequest.emotionalSupportMode;
       _requiresHomeVisit = initialRequest.requiresHomeVisit;
       _lateNightSupport = initialRequest.lateNightSupport;
@@ -241,9 +239,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               ),
               const SizedBox(height: 16),
               _SectionCard(
-                title: 'Urgency and visibility',
+                title: 'Urgency and location',
                 subtitle:
-                    'Urgency affects ranking. Visibility controls whether the request is broadly surfaced or kept to eligible helpers only.',
+                    'Urgency affects ranking. The location you set here is the exact location help givers will see for this request.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -265,31 +263,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                               onSelected: (_) {
                                 setState(() {
                                   _urgency = urgency;
-                                });
-                              },
-                            ),
-                          )
-                          .toList(),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'Visibility',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: HelpRequestVisibility.values
-                          .map(
-                            (visibility) => ChoiceChip(
-                              label: Text(visibility.label),
-                              selected: _visibility == visibility,
-                              onSelected: (_) {
-                                setState(() {
-                                  _visibility = visibility;
                                 });
                               },
                             ),
@@ -328,7 +301,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                           textCapitalization: TextCapitalization.words,
                           readOnly: _useMyLocation,
                           decoration: const InputDecoration(
-                            labelText: 'Approximate location',
+                            labelText: 'Location help givers will see',
                             hintText: 'East Legon',
                           ),
                           validator: (value) {
@@ -515,7 +488,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                'Phone numbers, email addresses, and exact locations remain protected until matching and consent rules allow sharing.',
+                'The location you set for this request is shown to help givers exactly as entered.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: const Color(0xFF6D7C79),
@@ -575,7 +548,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             urgency: _urgency,
             location: locationValue,
             preferredTime: _preferredTimeController.text.trim(),
-            visibility: _visibility,
+            visibility: HelpRequestVisibility.public,
             attachmentLabel: _attachmentController.text.trim(),
             emotionalSupportMode: _emotionalSupportMode,
             requiresHomeVisit: _requiresHomeVisit,
@@ -590,7 +563,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             urgency: _urgency,
             location: locationValue,
             preferredTime: _preferredTimeController.text.trim(),
-            visibility: _visibility,
+            visibility: HelpRequestVisibility.public,
             attachmentLabel: _attachmentController.text.trim(),
             emotionalSupportMode: _emotionalSupportMode,
             requiresHomeVisit: _requiresHomeVisit,

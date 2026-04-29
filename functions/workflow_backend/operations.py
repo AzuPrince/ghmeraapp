@@ -443,10 +443,43 @@ class WorkflowOperationsMixin:
             allow_urgency_fallback=False,
         )
         if match_candidate is None:
-            raise WorkflowError(
-                'This request is no longer available for matching.',
-                status_code=409,
-            )
+            visibility = str(request.get('visibility', 'restricted')).strip()
+            if visibility != 'public':
+                raise WorkflowError(
+                    'This request is no longer available for matching.',
+                    status_code=409,
+                )
+
+            if not self.can_users_interact(requester, helper) or not self.is_active_helper(
+                helper
+            ):
+                raise WorkflowError(
+                    'This request is no longer available for matching.',
+                    status_code=409,
+                )
+
+            if self.is_high_risk_request(request) and not self.is_high_risk_qualified(
+                helper
+            ):
+                raise WorkflowError(
+                    'This request is no longer available for matching.',
+                    status_code=409,
+                )
+
+            public_reasons = ['Public request volunteer']
+            helper_area = str(helper.get('area', '')).strip()
+            helper_city = str(helper.get('city', '')).strip()
+            if helper_area:
+                public_reasons.append(f'Near {helper_area}')
+            elif helper_city:
+                public_reasons.append(f'Based in {helper_city}')
+
+            match_candidate = {
+                'helper': helper,
+                'score': 12.0,
+                'reasons': self.dedupe_reasons(public_reasons),
+                'isFallbackCandidate': True,
+            }
 
         self.confirm_match(
             request=request,

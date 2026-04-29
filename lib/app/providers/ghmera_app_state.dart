@@ -98,9 +98,22 @@ class GhmeraAppState extends ChangeNotifier {
   }
 
   bool _shouldShowCommunityRequest(HelpRequestEntity request) {
-    return request.requesterId != _currentUserId &&
-        !_isRequestHiddenForCurrentUser(request.id) &&
-        !currentUser.blockedUserIds.contains(request.requesterId);
+    if (request.requesterId == _currentUserId) {
+      return false;
+    }
+    if (_isRequestHiddenForCurrentUser(request.id)) {
+      return false;
+    }
+    if (currentUser.blockedUserIds.contains(request.requesterId)) {
+      return false;
+    }
+    // Once another user has accepted this request, hide it from everyone
+    // except the accepted helper themselves.
+    if (request.acceptedHelperId != null &&
+        request.acceptedHelperId != _currentUserId) {
+      return false;
+    }
+    return true;
   }
 
   List<HelpRequestEntity> get myRequests {
