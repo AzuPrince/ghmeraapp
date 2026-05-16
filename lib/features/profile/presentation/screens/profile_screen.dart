@@ -241,66 +241,6 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        _SectionCard(
-          title: 'Support categories',
-          subtitle:
-              'These settings determine what kinds of support you can offer.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'You can provide',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: RequestCategory.values
-                    .map(
-                      (category) => FilterChip(
-                        label: Text(category.label),
-                        selected: user.helpCategoriesProvided.contains(
-                          category,
-                        ),
-                        onSelected: (_) {
-                          appState.toggleCurrentUserProvidedCategory(category);
-                        },
-                      ),
-                    )
-                    .toList(),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'You may request',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: RequestCategory.values
-                    .map(
-                      (category) => FilterChip(
-                        label: Text(category.label),
-                        selected: user.helpCategoriesRequested.contains(
-                          category,
-                        ),
-                        onSelected: (_) {
-                          appState.toggleCurrentUserRequestedCategory(category);
-                        },
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
         const PrivacySessionControlsCard(),
         const SizedBox(height: 16),
         _SectionCard(

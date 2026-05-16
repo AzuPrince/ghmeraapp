@@ -579,7 +579,8 @@ class _HomeScreenState extends State<HomeScreen> {
         if (protectedThread == null) {
           showGhmeraSnackBar(
             context,
-            message: 'Protected chat with $helperFirstName is not available yet.',
+            message:
+                'Protected chat with $helperFirstName is not available yet.',
             type: SnackBarType.warning,
           );
           return;
@@ -613,11 +614,7 @@ class _HomeScreenState extends State<HomeScreen> {
           : appState.hasCurrentUserConfirmedRequestCompletion(request)
           ? 'You already marked this help as fulfilled.'
           : 'This request cannot be marked fulfilled yet.';
-      showGhmeraSnackBar(
-        context,
-        message: message,
-        type: SnackBarType.warning,
-      );
+      showGhmeraSnackBar(context, message: message, type: SnackBarType.warning);
       return;
     }
 
@@ -712,7 +709,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final appState = context.read<GhmeraAppState>();
     final request = appState.requestById(initialRequest.id);
     if (request.status == HelpRequestStatus.completed) {
-      showGhmeraSnackBar(context, message: 'Completed requests cannot be canceled.');
+      showGhmeraSnackBar(
+        context,
+        message: 'Completed requests cannot be canceled.',
+      );
       return;
     }
 
@@ -750,11 +750,12 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    showGhmeraSnackBar(context, message: 
-          canceled
-              ? 'Request canceled and removed from active help.'
-              : 'This request could not be canceled.',
-        );
+    showGhmeraSnackBar(
+      context,
+      message: canceled
+          ? 'Request canceled and removed from active help.'
+          : 'This request could not be canceled.',
+    );
   }
 
   Future<void> _showCommunityRequestActions(HelpRequestEntity request) async {
@@ -826,11 +827,12 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (selectedAction) {
       case _CommunityRequestMenuAction.removeFromView:
         final hidden = appState.hideRequestFromCurrentUser(request.id);
-        showGhmeraSnackBar(context, message: 
-              hidden
-                  ? 'Request removed from your view.'
-                  : 'This request is already hidden.',
-            );
+        showGhmeraSnackBar(
+          context,
+          message: hidden
+              ? 'Request removed from your view.'
+              : 'This request is already hidden.',
+        );
         return;
       case _CommunityRequestMenuAction.reportAccount:
         await _showAccountReportSheet(
@@ -843,11 +845,12 @@ class _HomeScreenState extends State<HomeScreen> {
           requester.id,
           requestId: request.id,
         );
-        showGhmeraSnackBar(context, message: 
-              blocked
-                  ? 'Account blocked and request removed from your view.'
-                  : 'This account is already blocked.',
-            );
+        showGhmeraSnackBar(
+          context,
+          message: blocked
+              ? 'Account blocked and request removed from your view.'
+              : 'This account is already blocked.',
+        );
         return;
     }
   }
@@ -912,11 +915,12 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (selectedAction) {
       case _MyRequestMenuAction.hideThisRequest:
         final hidden = appState.hideRequestFromCurrentUser(request.id);
-        showGhmeraSnackBar(context, message: 
-              hidden
-                  ? 'Request hidden from your requests.'
-                  : 'This request is already hidden.',
-            );
+        showGhmeraSnackBar(
+          context,
+          message: hidden
+              ? 'Request hidden from your requests.'
+              : 'This request is already hidden.',
+        );
         return;
       case _MyRequestMenuAction.deleteThisRequest:
         final shouldDelete = await _confirmDeleteRequest(request);
@@ -929,11 +933,12 @@ class _HomeScreenState extends State<HomeScreen> {
           return;
         }
 
-        showGhmeraSnackBar(context, message: 
-              deleted
-                  ? 'Request deleted.'
-                  : 'This request could not be deleted.',
-            );
+        showGhmeraSnackBar(
+          context,
+          message: deleted
+              ? 'Request deleted.'
+              : 'This request could not be deleted.',
+        );
         return;
     }
   }
@@ -977,7 +982,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (submitted == true && mounted) {
-      showGhmeraSnackBar(context, message: 'Account report submitted to moderators.');
+      showGhmeraSnackBar(
+        context,
+        message: 'Account report submitted to moderators.',
+      );
     }
   }
 
@@ -996,7 +1004,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (submitted == true && mounted) {
-      showGhmeraSnackBar(context, message: 'Safety report submitted to moderators.');
+      showGhmeraSnackBar(
+        context,
+        message: 'Safety report submitted to moderators.',
+      );
     }
   }
 }
@@ -1222,11 +1233,12 @@ class _RequestDetailsScreen extends StatelessWidget {
       return;
     }
 
-    showGhmeraSnackBar(context, message: 
-          started
-              ? 'Request marked as in progress.'
-              : 'This request could not be moved to in progress.',
-        );
+    showGhmeraSnackBar(
+      context,
+      message: started
+          ? 'Request marked as in progress.'
+          : 'This request could not be moved to in progress.',
+    );
   }
 
   Future<void> _handleConfirmCompletion(
@@ -1285,21 +1297,22 @@ class _RequestDetailsScreen extends StatelessWidget {
     final canReviewNow = appState.canCurrentUserSubmitReviewForRequest(
       refreshedRequest,
     );
-    showGhmeraSnackBar(context, message: 
-          !confirmed
-              ? 'Completion could not be updated.'
-              : submittedRating != null
-              ? refreshedRequest.status == HelpRequestStatus.completed
-                    ? 'Completion and your $submittedRating-star rating were saved. The request is now closed.'
-                    : 'Your completion confirmation and $submittedRating-star rating were saved. The request closes after the other participant confirms.'
-              : refreshedRequest.status == HelpRequestStatus.completed
-              ? 'Both participants confirmed completion. The request is now closed.'
-              : canReviewNow
-              ? refreshedRequest.requesterId == appState.currentUserId
-                    ? 'Your completion confirmation was saved. You can rate the help giver now.'
-                    : 'Your completion confirmation was saved. You can leave a review now.'
-              : 'Your completion confirmation was saved.',
-        );
+    showGhmeraSnackBar(
+      context,
+      message: !confirmed
+          ? 'Completion could not be updated.'
+          : submittedRating != null
+          ? refreshedRequest.status == HelpRequestStatus.completed
+                ? 'Completion and your $submittedRating-star rating were saved. The request is now closed.'
+                : 'Your completion confirmation and $submittedRating-star rating were saved. The request closes after the other participant confirms.'
+          : refreshedRequest.status == HelpRequestStatus.completed
+          ? 'Both participants confirmed completion. The request is now closed.'
+          : canReviewNow
+          ? refreshedRequest.requesterId == appState.currentUserId
+                ? 'Your completion confirmation was saved. You can rate the help giver now.'
+                : 'Your completion confirmation was saved. You can leave a review now.'
+          : 'Your completion confirmation was saved.',
+    );
   }
 
   Future<void> _openReviewSheet(
@@ -1372,7 +1385,10 @@ class _RequestDetailsScreen extends StatelessWidget {
     );
 
     if (submitted == true && context.mounted) {
-      showGhmeraSnackBar(context, message: 'Safety report submitted to moderators.');
+      showGhmeraSnackBar(
+        context,
+        message: 'Safety report submitted to moderators.',
+      );
     }
   }
 
@@ -1885,11 +1901,12 @@ class _RequestDetailsScreen extends StatelessWidget {
                               return;
                             }
 
-                            showGhmeraSnackBar(context, message: 
-                                  otherParticipant == null
-                                      ? 'Chat opens after a helper match is confirmed.'
-                                      : 'Chat with ${otherParticipant.fullName.split(' ').first} opens after the protected thread is ready.',
-                                );
+                            showGhmeraSnackBar(
+                              context,
+                              message: otherParticipant == null
+                                  ? 'Chat opens after a helper match is confirmed.'
+                                  : 'Chat with ${otherParticipant.fullName.split(' ').first} opens after the protected thread is ready.',
+                            );
                           },
                           icon: const Icon(Icons.chat_bubble_outline_rounded),
                           label: Text(chatLabel),
@@ -1912,7 +1929,8 @@ class _RequestDetailsScreen extends StatelessWidget {
                                     if (!matched) {
                                       showGhmeraSnackBar(
                                         context,
-                                        message: 'This request is no longer available for matching.',
+                                        message:
+                                            'This request is no longer available for matching.',
                                         type: SnackBarType.error,
                                       );
                                       return;
@@ -1920,7 +1938,8 @@ class _RequestDetailsScreen extends StatelessWidget {
 
                                     showGhmeraSnackBar(
                                       context,
-                                      message: 'Match confirmed. Protected chat is now available.',
+                                      message:
+                                          'Match confirmed. Protected chat is now available.',
                                       type: SnackBarType.success,
                                     );
                                   },
@@ -2130,7 +2149,10 @@ class _ReviewSubmissionSheetState extends State<_ReviewSubmissionSheet> {
                   }
 
                   if (review == null) {
-                    showGhmeraSnackBar(context, message: 'Review could not be submitted.');
+                    showGhmeraSnackBar(
+                      context,
+                      message: 'Review could not be submitted.',
+                    );
                     return;
                   }
 
@@ -2395,7 +2417,10 @@ class _AccountReportSheetState extends State<_AccountReportSheet> {
                   }
 
                   if (report == null) {
-                    showGhmeraSnackBar(context, message: 'Account report could not be submitted.');
+                    showGhmeraSnackBar(
+                      context,
+                      message: 'Account report could not be submitted.',
+                    );
                     return;
                   }
 
@@ -2519,7 +2544,10 @@ class _SafetyReportSheetState extends State<_SafetyReportSheet> {
                   }
 
                   if (report == null) {
-                    showGhmeraSnackBar(context, message: 'Safety report could not be submitted.');
+                    showGhmeraSnackBar(
+                      context,
+                      message: 'Safety report could not be submitted.',
+                    );
                     return;
                   }
 
@@ -4171,9 +4199,11 @@ class _HiddenRequestsScreen extends StatelessWidget {
                           return;
                         }
 
-                        showGhmeraSnackBar(context, message: 
+                        showGhmeraSnackBar(
+                          context,
+                          message:
                               '${request.title} restored to your requests.',
-                            );
+                        );
                       },
                     ),
               ],
@@ -4418,10 +4448,7 @@ class _SafetyTab extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    this.subtitle = '',
-  });
+  const _SectionHeader({required this.title, this.subtitle = ''});
 
   final String title;
   final String subtitle;
@@ -4461,7 +4488,6 @@ class _SectionHeader extends StatelessWidget {
     );
   }
 }
-
 
 class _RequestCard extends StatelessWidget {
   const _RequestCard({
@@ -5617,7 +5643,6 @@ Color _reportStatusColor(ReportStatus status) {
       return const Color(0xFF7A8885);
   }
 }
-
 
 String _relativeTime(DateTime timestamp) {
   final difference = DateTime.now().difference(timestamp);
