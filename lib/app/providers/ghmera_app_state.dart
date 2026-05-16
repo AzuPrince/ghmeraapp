@@ -467,7 +467,7 @@ class GhmeraAppState extends ChangeNotifier {
       return null;
     }
 
-    return userById(helperId);
+    return _findUserById(helperId);
   }
 
   UserEntity? peerForThread(MessageThreadEntity thread) {
@@ -480,7 +480,7 @@ class GhmeraAppState extends ChangeNotifier {
       return null;
     }
 
-    return userById(otherId);
+    return _findUserById(otherId);
   }
 
   List<UserEntity> helperCandidatesForRequest(HelpRequestEntity request) {

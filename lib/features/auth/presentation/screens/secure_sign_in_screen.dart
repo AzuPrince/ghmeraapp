@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../app/models/ghmera_models.dart';
 import '../../../../core/ui/apple_like_gradient.dart';
 import '../../../../core/ui/uniform_app_bar.dart';
+import '../../../../core/ui/app_snack_bar.dart';
 import '../../../help_request/presentation/screens/home_screen.dart';
 import '../providers/auth_provider.dart';
 
@@ -103,9 +104,11 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
         ? error.message
         : error.toString().replaceFirst('Exception: ', '');
 
-    ScaffoldMessenger.of(
+    showGhmeraSnackBar(
       context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+      message: message,
+      type: SnackBarType.error,
+    );
   }
 
   @override

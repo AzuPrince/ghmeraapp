@@ -9,6 +9,8 @@ import 'core/ui/apple_like_gradient.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/help_request/presentation/screens/home_screen.dart';
+import 'app/providers/connectivity_provider.dart';
+import 'core/ui/app_snack_bar.dart';
 
 const LinearGradient _darkAppGradient = LinearGradient(
   colors: <Color>[Color(0xFF0C131A), Color(0xFF16212D), Color(0xFF1C2834)],
@@ -55,6 +57,7 @@ class GhmeraApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AppThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => GhmeraAppState()),
+        ChangeNotifierProvider(create: (_) => ConnectivityProvider()),
       ],
       child: Consumer<AppThemeProvider>(
         builder: (context, appTheme, _) => MaterialApp(
@@ -160,16 +163,70 @@ class GhmeraApp extends StatelessWidget {
           ),
           builder: (context, child) {
             final isDark = Theme.of(context).brightness == Brightness.dark;
-            return DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: isDark ? _darkAppGradient : appleLikeScreenGradient,
+            return ConnectivityListener(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: isDark ? _darkAppGradient : appleLikeScreenGradient,
+                ),
+                child: child ?? const SizedBox.shrink(),
               ),
-              child: child ?? const SizedBox.shrink(),
             );
           },
           home: const _LaunchSequenceScreen(),
         ),
       ),
+    );
+  }
+}
+
+class ConnectivityListener extends StatefulWidget {
+  const ConnectivityListener({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<ConnectivityListener> createState() => _ConnectivityListenerState();
+}
+
+class _ConnectivityListenerState extends State<ConnectivityListener> {
+  bool _wasOffline = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isOnline = context.watch<ConnectivityProvider>().isOnline;
+
+    if (!isOnline && !_wasOffline) {
+      _wasOffline = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showOfflineSnackBar(context);
+      });
+    } else if (isOnline && _wasOffline) {
+      _wasOffline = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showOnlineSnackBar(context);
+      });
+    }
+
+    return widget.child;
+  }
+
+  void _showOfflineSnackBar(BuildContext context) {
+    showGhmeraSnackBar(
+      context,
+      message: 'You are offline. Some features may be limited.',
+      type: SnackBarType.error,
+      icon: Icons.wifi_off_rounded,
+      duration: const Duration(seconds: 5),
+    );
+  }
+
+  void _showOnlineSnackBar(BuildContext context) {
+    showGhmeraSnackBar(
+      context,
+      message: 'Back online!',
+      type: SnackBarType.success,
+      icon: Icons.wifi_rounded,
+      duration: const Duration(seconds: 2),
     );
   }
 }

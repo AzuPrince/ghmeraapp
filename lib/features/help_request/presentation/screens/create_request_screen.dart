@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
 import '../../../../core/ui/uniform_app_bar.dart';
+import '../../../../core/ui/app_snack_bar.dart';
 import '../../../profile/presentation/widgets/privacy_session_controls_card.dart';
 
 class CreateRequestScreen extends StatefulWidget {
@@ -514,12 +515,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final appState = context.read<GhmeraAppState>();
     final userLocation = _buildUserLocation(appState.currentUser);
     if (_useMyLocation && userLocation.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Your profile location is missing. Uncheck "Use my location by default" to enter a location manually.',
-          ),
-        ),
+      showGhmeraSnackBar(
+        context,
+        message: 'Your profile location is missing. Uncheck "Use my location by default" to enter a location manually.',
+        type: SnackBarType.warning,
       );
       return;
     }
@@ -529,12 +528,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         : _locationController.text.trim();
     final isEditing = widget.initialRequest != null;
     if (!isEditing && !appState.canCreateRequest && !_allowsExemption) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'This account is on a reciprocity hold. Use an emergency exception or help someone else first.',
-          ),
-        ),
+      showGhmeraSnackBar(
+        context,
+        message: 'This account is on a reciprocity hold. Use an emergency exception or help someone else first.',
+        type: SnackBarType.error,
       );
       return;
     }
@@ -577,24 +574,20 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     }
 
     if (savedRequest == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'The request could not be saved with the current account state.',
-          ),
-        ),
+      showGhmeraSnackBar(
+        context,
+        message: 'The request could not be saved with the current account state.',
+        type: SnackBarType.error,
       );
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isEditing
-              ? 'Your request changes were saved.'
-              : 'Your request was submitted and routed into matching.',
-        ),
-      ),
+    showGhmeraSnackBar(
+      context,
+      message: isEditing
+          ? 'Your request changes were saved.'
+          : 'Your request was submitted and routed into matching.',
+      type: SnackBarType.success,
     );
     Navigator.of(context).pop(savedRequest.id);
   }

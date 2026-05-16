@@ -9,6 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../../../app/models/ghmera_models.dart';
 
@@ -47,6 +48,7 @@ class AuthProvider extends ChangeNotifier {
 
   bool _isLoading = false;
   bool _isSignedIn = false;
+  bool _isGoogleInitialized = false;
   AuthMethod? _activeMethod;
   String? _verificationId;
   String? _pendingPhoneNumber;
@@ -89,11 +91,24 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signInWithGoogle() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    if (connectivity.contains(ConnectivityResult.none)) {
+      throw const AuthException(
+        'You are offline. Please check your internet connection and try again.',
+      );
+    }
+
     final auth = _requireFirebaseAuth();
     _setLoading(AuthMethod.google);
 
     try {
-      await GoogleSignIn.instance.initialize();
+      if (!_isGoogleInitialized) {
+        await GoogleSignIn.instance.initialize(
+          serverClientId:
+              '439222343527-kksj2d02c3ell375is31s36795a0p5s7.apps.googleusercontent.com',
+        );
+        _isGoogleInitialized = true;
+      }
       final googleUser = await GoogleSignIn.instance.authenticate();
       final googleAuth = googleUser.authentication;
 
@@ -118,6 +133,13 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signInWithApple() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    if (connectivity.contains(ConnectivityResult.none)) {
+      throw const AuthException(
+        'You are offline. Please check your internet connection and try again.',
+      );
+    }
+
     final auth = _requireFirebaseAuth();
     _setLoading(AuthMethod.apple);
 
@@ -167,6 +189,13 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> startPhoneNumberSignIn(String phoneNumber) async {
+    final connectivity = await Connectivity().checkConnectivity();
+    if (connectivity.contains(ConnectivityResult.none)) {
+      throw const AuthException(
+        'You are offline. Please check your internet connection and try again.',
+      );
+    }
+
     final auth = _requireFirebaseAuth();
     final normalizedPhone = phoneNumber.trim();
     if (normalizedPhone.isEmpty) {

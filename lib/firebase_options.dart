@@ -25,15 +25,9 @@ class DefaultFirebaseOptions {
       case TargetPlatform.iOS:
         return ios;
       case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -70,8 +64,30 @@ class DefaultFirebaseOptions {
     messagingSenderId: '439222343527',
     projectId: 'ghmeraapp-aeb79',
     storageBucket: 'ghmeraapp-aeb79.firebasestorage.app',
+    androidClientId: '439222343527-ejucoubb1h9fg86asroah4jib2e5fs3t.apps.googleusercontent.com',
     iosClientId: '439222343527-3n1jp0l99a6e2ojrs1pib10msb3js70v.apps.googleusercontent.com',
     iosBundleId: 'com.peatech.ghmeraApp',
+  );
+
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyCeyhG7lAeWl29QnszpxIRMxECbb9TEPrQ',
+    appId: '1:439222343527:ios:495dcda1e27382581901c2',
+    messagingSenderId: '439222343527',
+    projectId: 'ghmeraapp-aeb79',
+    storageBucket: 'ghmeraapp-aeb79.firebasestorage.app',
+    androidClientId: '439222343527-ejucoubb1h9fg86asroah4jib2e5fs3t.apps.googleusercontent.com',
+    iosClientId: '439222343527-3n1jp0l99a6e2ojrs1pib10msb3js70v.apps.googleusercontent.com',
+    iosBundleId: 'com.peatech.ghmeraApp',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyCeldMKK77sLDlL04FFicwu3pYPVB6EIz4',
+    appId: '1:439222343527:web:92dc3522f467a3741901c2',
+    messagingSenderId: '439222343527',
+    projectId: 'ghmeraapp-aeb79',
+    authDomain: 'ghmeraapp-aeb79.firebaseapp.com',
+    storageBucket: 'ghmeraapp-aeb79.firebasestorage.app',
+    measurementId: 'G-PH91YXR4BV',
   );
 
 }

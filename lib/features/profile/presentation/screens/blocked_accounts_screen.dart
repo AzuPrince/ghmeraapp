@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
+import '../../../../core/ui/app_snack_bar.dart';
 
 class BlockedAccountsScreen extends StatelessWidget {
   const BlockedAccountsScreen({super.key});
@@ -132,10 +133,10 @@ class BlockedAccountsScreen extends StatelessWidget {
                     onPressed: () {
                       final success = appState.unblockUserAccount(blockedUser.id);
                       if (success && context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('${blockedUser.fullName} has been unblocked.'),
-                          ),
+                        showGhmeraSnackBar(
+                          context,
+                          message: '${blockedUser.fullName} has been unblocked.',
+                          type: SnackBarType.success,
                         );
                       }
                     },

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
+import '../../../../core/ui/app_snack_bar.dart';
 import 'blocked_accounts_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
@@ -614,10 +615,10 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
       setState(() {
         _applyingDeviceLocation = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to read device location right now.'),
-        ),
+      showGhmeraSnackBar(
+        context,
+        message: 'Unable to read device location right now.',
+        type: SnackBarType.error,
       );
       return;
     }
@@ -628,9 +629,11 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
       _usesDeviceLocationOverride = true;
       _applyingDeviceLocation = false;
     });
-    ScaffoldMessenger.of(
+    showGhmeraSnackBar(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Device location loaded.')));
+      message: 'Device location loaded.',
+      type: SnackBarType.success,
+    );
   }
 
   Future<void> _selectAvailabilityWindow() async {

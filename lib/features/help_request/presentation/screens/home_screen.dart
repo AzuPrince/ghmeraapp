@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
+import '../../../../core/ui/app_snack_bar.dart';
 import '../../../../core/ui/uniform_app_bar.dart';
 import 'home_menu_screen.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
@@ -388,14 +389,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final helperFirstName = helper.fullName.trim().split(' ').first;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          matched
-              ? '$helperFirstName was requested directly for your help request.'
-              : 'Could not request $helperFirstName for that help request.',
-        ),
-      ),
+    showGhmeraSnackBar(
+      context,
+      message: matched
+          ? '$helperFirstName was requested directly for your help request.'
+          : 'Could not request $helperFirstName for that help request.',
+      type: matched ? SnackBarType.success : SnackBarType.error,
     );
   }
 
@@ -578,12 +577,10 @@ class _HomeScreenState extends State<HomeScreen> {
       case _AcceptedRequestMenuAction.messageReceiver:
         final protectedThread = appState.threadForRequest(request.id);
         if (protectedThread == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Protected chat with $helperFirstName is not available yet.',
-              ),
-            ),
+          showGhmeraSnackBar(
+            context,
+            message: 'Protected chat with $helperFirstName is not available yet.',
+            type: SnackBarType.warning,
           );
           return;
         }
@@ -616,9 +613,11 @@ class _HomeScreenState extends State<HomeScreen> {
           : appState.hasCurrentUserConfirmedRequestCompletion(request)
           ? 'You already marked this help as fulfilled.'
           : 'This request cannot be marked fulfilled yet.';
-      ScaffoldMessenger.of(
+      showGhmeraSnackBar(
         context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+        message: message,
+        type: SnackBarType.warning,
+      );
       return;
     }
 
@@ -675,24 +674,22 @@ class _HomeScreenState extends State<HomeScreen> {
         refreshedRequest.requesterId == appState.currentUserId &&
         appState.canCurrentUserSubmitReviewForRequest(refreshedRequest);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          !confirmed
-              ? 'Help fulfillment could not be updated.'
-              : submittedRating != null && helpGiverFirstName != null
-              ? refreshedRequest.status == HelpRequestStatus.completed
-                    ? 'Completion and your $submittedRating-star rating for $helpGiverFirstName were saved. The request is now closed.'
-                    : 'Your help fulfillment confirmation and $submittedRating-star rating for $helpGiverFirstName were saved. The request will close once they confirm too.'
-              : refreshedRequest.status == HelpRequestStatus.completed
-              ? helpGiverFirstName == null
-                    ? 'Both participants confirmed completion. The request is now closed.'
-                    : 'Both participants confirmed completion. You can still rate $helpGiverFirstName from request details.'
-              : canRateHelpGiverLater && helpGiverFirstName != null
-              ? 'Your help fulfillment confirmation was saved. You can rate $helpGiverFirstName now or later.'
-              : 'Your help fulfillment confirmation was saved. Once the helper also confirms, their score and trust will increase.',
-        ),
-      ),
+    showGhmeraSnackBar(
+      context,
+      message: !confirmed
+          ? 'Help fulfillment could not be updated.'
+          : submittedRating != null && helpGiverFirstName != null
+          ? refreshedRequest.status == HelpRequestStatus.completed
+                ? 'Completion and your $submittedRating-star rating for $helpGiverFirstName were saved. The request is now closed.'
+                : 'Your help fulfillment confirmation and $submittedRating-star rating for $helpGiverFirstName were saved. The request will close once they confirm too.'
+          : refreshedRequest.status == HelpRequestStatus.completed
+          ? helpGiverFirstName == null
+                ? 'Both participants confirmed completion. The request is now closed.'
+                : 'Both participants confirmed completion. You can still rate $helpGiverFirstName from request details.'
+          : canRateHelpGiverLater && helpGiverFirstName != null
+          ? 'Your help fulfillment confirmation was saved. You can rate $helpGiverFirstName now or later.'
+          : 'Your help fulfillment confirmation was saved. Once the helper also confirms, their score and trust will increase.',
+      type: confirmed ? SnackBarType.success : SnackBarType.error,
     );
   }
 
@@ -715,16 +712,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final appState = context.read<GhmeraAppState>();
     final request = appState.requestById(initialRequest.id);
     if (request.status == HelpRequestStatus.completed) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Completed requests cannot be canceled.')),
-      );
+      showGhmeraSnackBar(context, message: 'Completed requests cannot be canceled.');
       return;
     }
 
     if (request.status == HelpRequestStatus.canceled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This request is already canceled.')),
-      );
+      showGhmeraSnackBar(context, message: 'This request is already canceled.');
       return;
     }
 
@@ -757,15 +750,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
+    showGhmeraSnackBar(context, message: 
           canceled
               ? 'Request canceled and removed from active help.'
               : 'This request could not be canceled.',
-        ),
-      ),
-    );
+        );
   }
 
   Future<void> _showCommunityRequestActions(HelpRequestEntity request) async {
@@ -837,15 +826,11 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (selectedAction) {
       case _CommunityRequestMenuAction.removeFromView:
         final hidden = appState.hideRequestFromCurrentUser(request.id);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
+        showGhmeraSnackBar(context, message: 
               hidden
                   ? 'Request removed from your view.'
                   : 'This request is already hidden.',
-            ),
-          ),
-        );
+            );
         return;
       case _CommunityRequestMenuAction.reportAccount:
         await _showAccountReportSheet(
@@ -858,15 +843,11 @@ class _HomeScreenState extends State<HomeScreen> {
           requester.id,
           requestId: request.id,
         );
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
+        showGhmeraSnackBar(context, message: 
               blocked
                   ? 'Account blocked and request removed from your view.'
                   : 'This account is already blocked.',
-            ),
-          ),
-        );
+            );
         return;
     }
   }
@@ -931,15 +912,11 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (selectedAction) {
       case _MyRequestMenuAction.hideThisRequest:
         final hidden = appState.hideRequestFromCurrentUser(request.id);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
+        showGhmeraSnackBar(context, message: 
               hidden
                   ? 'Request hidden from your requests.'
                   : 'This request is already hidden.',
-            ),
-          ),
-        );
+            );
         return;
       case _MyRequestMenuAction.deleteThisRequest:
         final shouldDelete = await _confirmDeleteRequest(request);
@@ -952,15 +929,11 @@ class _HomeScreenState extends State<HomeScreen> {
           return;
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
+        showGhmeraSnackBar(context, message: 
               deleted
                   ? 'Request deleted.'
                   : 'This request could not be deleted.',
-            ),
-          ),
-        );
+            );
         return;
     }
   }
@@ -1004,11 +977,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (submitted == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Account report submitted to moderators.'),
-        ),
-      );
+      showGhmeraSnackBar(context, message: 'Account report submitted to moderators.');
     }
   }
 
@@ -1027,9 +996,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (submitted == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Safety report submitted to moderators.')),
-      );
+      showGhmeraSnackBar(context, message: 'Safety report submitted to moderators.');
     }
   }
 }
@@ -1076,9 +1043,7 @@ class _ThreadScreenState extends State<_ThreadScreen> {
     }
 
     if (!sent) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Message could not be sent.')),
-      );
+      showGhmeraSnackBar(context, message: 'Message could not be sent.');
       return;
     }
 
@@ -1257,15 +1222,11 @@ class _RequestDetailsScreen extends StatelessWidget {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
+    showGhmeraSnackBar(context, message: 
           started
               ? 'Request marked as in progress.'
               : 'This request could not be moved to in progress.',
-        ),
-      ),
-    );
+        );
   }
 
   Future<void> _handleConfirmCompletion(
@@ -1324,9 +1285,7 @@ class _RequestDetailsScreen extends StatelessWidget {
     final canReviewNow = appState.canCurrentUserSubmitReviewForRequest(
       refreshedRequest,
     );
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
+    showGhmeraSnackBar(context, message: 
           !confirmed
               ? 'Completion could not be updated.'
               : submittedRating != null
@@ -1340,9 +1299,7 @@ class _RequestDetailsScreen extends StatelessWidget {
                     ? 'Your completion confirmation was saved. You can rate the help giver now.'
                     : 'Your completion confirmation was saved. You can leave a review now.'
               : 'Your completion confirmation was saved.',
-        ),
-      ),
-    );
+        );
   }
 
   Future<void> _openReviewSheet(
@@ -1376,14 +1333,12 @@ class _RequestDetailsScreen extends StatelessWidget {
     }
 
     if (submitted && context.mounted) {
-      scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            useStarRatingSheet
-                ? 'Star rating submitted and saved to the help giver profile.'
-                : 'Review submitted and saved to your profile metrics.',
-          ),
-        ),
+      showGhmeraSnackBar(
+        context,
+        message: useStarRatingSheet
+            ? 'Star rating submitted and saved to the help giver profile.'
+            : 'Review submitted and saved to your profile metrics.',
+        type: SnackBarType.success,
       );
     }
   }
@@ -1417,9 +1372,7 @@ class _RequestDetailsScreen extends StatelessWidget {
     );
 
     if (submitted == true && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Safety report submitted to moderators.')),
-      );
+      showGhmeraSnackBar(context, message: 'Safety report submitted to moderators.');
     }
   }
 
@@ -1932,15 +1885,11 @@ class _RequestDetailsScreen extends StatelessWidget {
                               return;
                             }
 
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
+                            showGhmeraSnackBar(context, message: 
                                   otherParticipant == null
                                       ? 'Chat opens after a helper match is confirmed.'
                                       : 'Chat with ${otherParticipant.fullName.split(' ').first} opens after the protected thread is ready.',
-                                ),
-                              ),
-                            );
+                                );
                           },
                           icon: const Icon(Icons.chat_bubble_outline_rounded),
                           label: Text(chatLabel),
@@ -1961,24 +1910,18 @@ class _RequestDetailsScreen extends StatelessWidget {
                                     }
 
                                     if (!matched) {
-                                      ScaffoldMessenger.of(
+                                      showGhmeraSnackBar(
                                         context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'This request is no longer available for matching.',
-                                          ),
-                                        ),
+                                        message: 'This request is no longer available for matching.',
+                                        type: SnackBarType.error,
                                       );
                                       return;
                                     }
 
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Match confirmed. Protected chat is now available.',
-                                        ),
-                                      ),
+                                    showGhmeraSnackBar(
+                                      context,
+                                      message: 'Match confirmed. Protected chat is now available.',
+                                      type: SnackBarType.success,
                                     );
                                   },
                             icon: const Icon(Icons.volunteer_activism_outlined),
@@ -2187,11 +2130,7 @@ class _ReviewSubmissionSheetState extends State<_ReviewSubmissionSheet> {
                   }
 
                   if (review == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Review could not be submitted.'),
-                      ),
-                    );
+                    showGhmeraSnackBar(context, message: 'Review could not be submitted.');
                     return;
                   }
 
@@ -2244,9 +2183,7 @@ class _HelpGiverRatingSheetState extends State<_HelpGiverRatingSheet> {
 
     setState(() => _isSubmitting = false);
     if (review == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Star rating could not be saved.')),
-      );
+      showGhmeraSnackBar(context, message: 'Star rating could not be saved.');
       return;
     }
 
@@ -2458,11 +2395,7 @@ class _AccountReportSheetState extends State<_AccountReportSheet> {
                   }
 
                   if (report == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Account report could not be submitted.'),
-                      ),
-                    );
+                    showGhmeraSnackBar(context, message: 'Account report could not be submitted.');
                     return;
                   }
 
@@ -2586,11 +2519,7 @@ class _SafetyReportSheetState extends State<_SafetyReportSheet> {
                   }
 
                   if (report == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Safety report could not be submitted.'),
-                      ),
-                    );
+                    showGhmeraSnackBar(context, message: 'Safety report could not be submitted.');
                     return;
                   }
 
@@ -2900,11 +2829,12 @@ class _RequestsTab extends StatelessWidget {
                 )
               else
                 for (final request in acceptedRequests)
-                  _AcceptedMyRequestTile(
-                    request: request,
-                    helper: appState.helperForRequest(request)!,
-                    onTap: () => onManageAcceptedRequest(request),
-                  ),
+                  if (appState.helperForRequest(request) case final helper?)
+                    _AcceptedMyRequestTile(
+                      request: request,
+                      helper: helper,
+                      onTap: () => onManageAcceptedRequest(request),
+                    ),
               const SizedBox(height: 14),
               const _SectionHeader(
                 title: 'Your requests',
@@ -4241,13 +4171,9 @@ class _HiddenRequestsScreen extends StatelessWidget {
                           return;
                         }
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
+                        showGhmeraSnackBar(context, message: 
                               '${request.title} restored to your requests.',
-                            ),
-                          ),
-                        );
+                            );
                       },
                     ),
               ],
@@ -4495,14 +4421,10 @@ class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.title,
     this.subtitle = '',
-    this.actionLabel,
-    this.onAction,
   });
 
   final String title;
   final String subtitle;
-  final String? actionLabel;
-  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -4535,88 +4457,17 @@ class _SectionHeader extends StatelessWidget {
             ],
           ),
         ),
-        if (actionLabel != null && onAction != null)
-          TextButton(onPressed: onAction, child: Text(actionLabel!)),
       ],
     );
   }
 }
 
-class _QuickActionCard extends StatelessWidget {
-  const _QuickActionCard({
-    required this.width,
-    required this.icon,
-    required this.title,
-    required this.text,
-    required this.onTap,
-  });
-
-  final double width;
-  final IconData icon;
-  final String title;
-  final String text;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(5),
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(5),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Color(0x10000000),
-                blurRadius: 20,
-                offset: Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE7F1EE),
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: Icon(icon),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                text,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF61726F),
-                  height: 1.45,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _RequestCard extends StatelessWidget {
   const _RequestCard({
     required this.request,
     required this.appState,
     this.showRequester = false,
-    this.helperContext = false,
     this.leadingLabel,
     this.onTap,
   });
@@ -4624,7 +4475,6 @@ class _RequestCard extends StatelessWidget {
   final HelpRequestEntity request;
   final GhmeraAppState appState;
   final bool showRequester;
-  final bool helperContext;
   final String? leadingLabel;
   final VoidCallback? onTap;
 
@@ -4632,7 +4482,6 @@ class _RequestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final requester = appState.userById(request.requesterId);
     final helper = appState.helperForRequest(request);
-    final helperCandidates = appState.helperCandidatesForRequest(request);
     final lastAction = request.actionLog.isNotEmpty
         ? request.actionLog.last
         : null;
@@ -4774,31 +4623,6 @@ class _RequestCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(child: Text('Accepted by ${helper.fullName}')),
                 ],
-              ),
-            ],
-            if (helperContext &&
-                helper == null &&
-                helperCandidates.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(
-                'Helper candidates',
-                style: Theme.of(
-                  context,
-                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: helperCandidates
-                    .take(3)
-                    .map(
-                      (candidate) => _Pill(
-                        label: candidate.fullName,
-                        color: const Color(0xFFE7F1EE),
-                      ),
-                    )
-                    .toList(),
               ),
             ],
             if (lastAction != null) ...[
@@ -5112,7 +4936,7 @@ class _TrustStars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final filledStars = ((trustScore / 20).round()).clamp(0, 5) as int;
+    final filledStars = ((trustScore / 20).round()).clamp(0, 5);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -5158,12 +4982,12 @@ class _RequesterAvatar extends StatelessWidget {
             ? Image.network(
                 photoPath,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _fallbackAvatar(initials),
+                errorBuilder: (_, _, _) => _fallbackAvatar(initials),
               )
             : Image.asset(
                 photoPath,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _fallbackAvatar(initials),
+                errorBuilder: (_, _, _) => _fallbackAvatar(initials),
               ),
       ),
     );
@@ -5794,44 +5618,6 @@ Color _reportStatusColor(ReportStatus status) {
   }
 }
 
-Color _moodColor(MoodLevel mood) {
-  switch (mood) {
-    case MoodLevel.good:
-      return const Color(0xFF4F8C62);
-    case MoodLevel.okay:
-      return const Color(0xFFD08A2E);
-    case MoodLevel.struggling:
-      return const Color(0xFFC97749);
-    case MoodLevel.notOkay:
-      return const Color(0xFFB14E5F);
-  }
-}
-
-IconData _moodIcon(MoodLevel mood) {
-  switch (mood) {
-    case MoodLevel.good:
-      return Icons.sentiment_satisfied_alt_rounded;
-    case MoodLevel.okay:
-      return Icons.sentiment_neutral_rounded;
-    case MoodLevel.struggling:
-      return Icons.self_improvement_rounded;
-    case MoodLevel.notOkay:
-      return Icons.support_rounded;
-  }
-}
-
-String _moodDescription(MoodLevel mood) {
-  switch (mood) {
-    case MoodLevel.good:
-      return 'You are doing well today.';
-    case MoodLevel.okay:
-      return 'You are stable but may still want lighter support.';
-    case MoodLevel.struggling:
-      return 'The app will highlight emotional support and support circles.';
-    case MoodLevel.notOkay:
-      return 'The app will surface stronger support prompts and crisis resources.';
-  }
-}
 
 String _relativeTime(DateTime timestamp) {
   final difference = DateTime.now().difference(timestamp);
