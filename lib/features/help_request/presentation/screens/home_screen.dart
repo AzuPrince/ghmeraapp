@@ -1321,7 +1321,6 @@ class _RequestDetailsScreen extends StatelessWidget {
     required UserEntity reviewee,
   }) async {
     final appState = context.read<GhmeraAppState>();
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
     final useStarRatingSheet =
         request.requesterId == appState.currentUserId &&
         request.acceptedHelperId == reviewee.id;

@@ -9,9 +9,6 @@ void showGhmeraSnackBar(
   SnackBarType type = SnackBarType.info,
   Duration duration = const Duration(seconds: 4),
 }) {
-  final theme = Theme.of(context);
-  final colorScheme = theme.colorScheme;
-
   Color backgroundColor;
   IconData displayIcon;
 
@@ -29,7 +26,6 @@ void showGhmeraSnackBar(
       displayIcon = icon ?? Icons.warning_amber_rounded;
       break;
     case SnackBarType.info:
-    default:
       backgroundColor = const Color(0xFF163C38);
       displayIcon = icon ?? Icons.info_outline_rounded;
       break;

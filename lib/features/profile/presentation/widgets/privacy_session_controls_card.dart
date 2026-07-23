@@ -101,10 +101,13 @@ class PrivacySessionControlsCard extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
+                    // ignore: deprecated_member_use
                     RadioListTile<String>(
                       value: session.id,
+                      // ignore: deprecated_member_use
                       groupValue: currentSessionId,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      // ignore: deprecated_member_use
                       onChanged: (selectedSessionId) {
                         if (selectedSessionId == null) {
                           return;
