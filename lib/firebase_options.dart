@@ -60,24 +60,24 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyCeyhG7lAeWl29QnszpxIRMxECbb9TEPrQ',
-    appId: '1:439222343527:ios:495dcda1e27382581901c2',
+    appId: '1:439222343527:ios:0fe43a8892ca2bc91901c2',
     messagingSenderId: '439222343527',
     projectId: 'ghmeraapp-aeb79',
     storageBucket: 'ghmeraapp-aeb79.firebasestorage.app',
     androidClientId: '439222343527-ejucoubb1h9fg86asroah4jib2e5fs3t.apps.googleusercontent.com',
-    iosClientId: '439222343527-3n1jp0l99a6e2ojrs1pib10msb3js70v.apps.googleusercontent.com',
-    iosBundleId: 'com.peatech.ghmeraApp',
+    iosClientId: '439222343527-vuv1f37bjsk3duijcglv5a5tiq7ptck8.apps.googleusercontent.com',
+    iosBundleId: 'com.peatech.ghmera',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyCeyhG7lAeWl29QnszpxIRMxECbb9TEPrQ',
-    appId: '1:439222343527:ios:495dcda1e27382581901c2',
+    appId: '1:439222343527:ios:0fe43a8892ca2bc91901c2',
     messagingSenderId: '439222343527',
     projectId: 'ghmeraapp-aeb79',
     storageBucket: 'ghmeraapp-aeb79.firebasestorage.app',
     androidClientId: '439222343527-ejucoubb1h9fg86asroah4jib2e5fs3t.apps.googleusercontent.com',
-    iosClientId: '439222343527-3n1jp0l99a6e2ojrs1pib10msb3js70v.apps.googleusercontent.com',
-    iosBundleId: 'com.peatech.ghmeraApp',
+    iosClientId: '439222343527-vuv1f37bjsk3duijcglv5a5tiq7ptck8.apps.googleusercontent.com',
+    iosBundleId: 'com.peatech.ghmera',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

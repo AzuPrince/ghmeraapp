@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/ui/apple_like_gradient.dart';
 import '../../../help_request/presentation/screens/home_menu_screen.dart';
+import '../../../help_request/presentation/screens/home_screen.dart';
 import 'secure_sign_in_screen.dart';
 
 class LoginScreen extends StatelessWidget {
@@ -193,6 +194,32 @@ class LoginScreen extends StatelessWidget {
                           child: const Text(
                             'Accept terms of use and privacy policy',
                             textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const HomeScreen(),
+                              ),
+                              (route) => false,
+                            );
+                          },
+                          icon: const Icon(Icons.flash_on_rounded, size: 18),
+                          label: const Text('Login bypass'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.4),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(5),
+                            ),
                           ),
                         ),
                       ),

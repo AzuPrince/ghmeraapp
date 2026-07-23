@@ -8,7 +8,7 @@
 PRODUCT_NAME = ghmera_app
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.peatech.ghmeraApp
+PRODUCT_BUNDLE_IDENTIFIER = com.peatech.ghmera
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.peatech. All rights reserved.

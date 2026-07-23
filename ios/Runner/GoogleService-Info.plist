@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>439222343527-3n1jp0l99a6e2ojrs1pib10msb3js70v.apps.googleusercontent.com</string>
+	<string>439222343527-vuv1f37bjsk3duijcglv5a5tiq7ptck8.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.439222343527-3n1jp0l99a6e2ojrs1pib10msb3js70v</string>
+	<string>com.googleusercontent.apps.439222343527-vuv1f37bjsk3duijcglv5a5tiq7ptck8</string>
 	<key>ANDROID_CLIENT_ID</key>
 	<string>439222343527-ejucoubb1h9fg86asroah4jib2e5fs3t.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
@@ -15,7 +15,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.peatech.ghmeraApp</string>
+	<string>com.peatech.ghmera</string>
 	<key>PROJECT_ID</key>
 	<string>ghmeraapp-aeb79</string>
 	<key>STORAGE_BUCKET</key>
@@ -31,6 +31,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:439222343527:ios:495dcda1e27382581901c2</string>
+	<string>1:439222343527:ios:0fe43a8892ca2bc91901c2</string>
 </dict>
 </plist>

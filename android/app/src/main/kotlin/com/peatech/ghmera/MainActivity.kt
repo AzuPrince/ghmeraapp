@@ -1,4 +1,4 @@
-package com.peatech.ghmera_app
+package com.peatech.ghmera
 
 import io.flutter.embedding.android.FlutterActivity
 
