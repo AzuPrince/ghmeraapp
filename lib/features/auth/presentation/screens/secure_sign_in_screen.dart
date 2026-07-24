@@ -229,19 +229,6 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: TextButton.icon(
-                          onPressed: _goHome,
-                          icon: const Icon(Icons.flash_on_rounded),
-                          label: const Text('Login bypass'),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            foregroundColor: colorScheme.primary,
-                          ),
-                        ),
-                      ),
                       const SizedBox(height: 18),
                       Text(
                         'By continuing, you enter the live product shell backed by your database data for requests, matching, trust workflows, and wellbeing activity.',
