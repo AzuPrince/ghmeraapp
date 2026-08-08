@@ -1,17 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
 
-import 'package:crypto/crypto.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-
-import '../../../../app/models/ghmera_models.dart';
+import 'package:flutter/foundation.dart';
 
 class AuthException implements Exception {
   const AuthException(this.message);
@@ -23,45 +16,41 @@ class AuthException implements Exception {
 }
 
 class AuthProvider extends ChangeNotifier {
-  AuthProvider({FirebaseAuth? firebaseAuth})
-    : _firebaseAuth =
-          firebaseAuth ??
-          (Firebase.apps.isNotEmpty ? FirebaseAuth.instance : null) {
+  AuthProvider({
+    FirebaseAuth? firebaseAuth,
+    FirebaseFunctions? firebaseFunctions,
+    Connectivity? connectivity,
+  }) : _firebaseAuth =
+           firebaseAuth ??
+           (Firebase.apps.isNotEmpty ? FirebaseAuth.instance : null),
+       _firebaseFunctions = firebaseFunctions,
+       _connectivity = connectivity ?? Connectivity() {
     final auth = _firebaseAuth;
-    if (auth == null) {
-      return;
-    }
+    if (auth == null) return;
 
     _isSignedIn = auth.currentUser != null;
     _authSubscription = auth.authStateChanges().listen((user) {
       _isSignedIn = user != null;
-      if (user == null) {
-        _verificationId = null;
-        _pendingPhoneNumber = null;
-      }
       notifyListeners();
     });
   }
 
+  static const _functionsRegion = 'us-central1';
+
   final FirebaseAuth? _firebaseAuth;
+  final FirebaseFunctions? _firebaseFunctions;
+  final Connectivity _connectivity;
   StreamSubscription<User?>? _authSubscription;
 
   bool _isLoading = false;
   bool _isSignedIn = false;
-  bool _isGoogleInitialized = false;
-  AuthMethod? _activeMethod;
-  String? _verificationId;
-  String? _pendingPhoneNumber;
 
   bool get isLoading => _isLoading;
   bool get isSignedIn => _isSignedIn;
-  AuthMethod? get activeMethod => _activeMethod;
 
   User? get firebaseUser => _firebaseAuth?.currentUser;
   String? get photoUrl => firebaseUser?.photoURL;
   String? get email => firebaseUser?.email;
-  bool get hasPendingPhoneVerification => _verificationId != null;
-  String? get pendingPhoneNumber => _pendingPhoneNumber;
 
   String get displayName {
     final profileName = firebaseUser?.displayName?.trim();
@@ -77,267 +66,129 @@ class AuthProvider extends ChangeNotifier {
     return 'Ghmera User';
   }
 
-  bool isBusy(AuthMethod method) => _isLoading && _activeMethod == method;
+  Future<void> signInWithEmailAndPassword(String email, String password) async {
+    await _ensureOnline();
+    final auth = _requireFirebaseAuth();
+    _setLoading();
 
-  Future<void> signIn(AuthMethod method) {
-    switch (method) {
-      case AuthMethod.google:
-        return signInWithGoogle();
-      case AuthMethod.apple:
-        return signInWithApple();
-      case AuthMethod.phone:
-        throw const AuthException('Use phone number verification to continue.');
+    try {
+      await auth.signInWithEmailAndPassword(
+        email: email.trim().toLowerCase(),
+        password: password,
+      );
+    } on FirebaseAuthException catch (error) {
+      throw AuthException(_firebaseErrorMessage(error));
+    } catch (error) {
+      debugPrint('Email sign-in failed: $error');
+      throw const AuthException('Sign in failed. Please try again.');
+    } finally {
+      _clearLoading();
     }
   }
 
-  Future<void> signInWithGoogle() async {
-    final connectivity = await Connectivity().checkConnectivity();
-    if (connectivity.contains(ConnectivityResult.none)) {
-      throw const AuthException(
-        'You are offline. Please check your internet connection and try again.',
-      );
-    }
-
-    final auth = _requireFirebaseAuth();
-    _setLoading(AuthMethod.google);
+  Future<void> sendRegistrationCode({
+    required String email,
+    required String displayName,
+  }) async {
+    await _ensureOnline();
+    _setLoading();
 
     try {
-      if (!_isGoogleInitialized) {
-        await GoogleSignIn.instance.initialize(
-          serverClientId:
-              '439222343527-kksj2d02c3ell375is31s36795a0p5s7.apps.googleusercontent.com',
-        );
-        _isGoogleInitialized = true;
-      }
-      final googleUser = await GoogleSignIn.instance.authenticate();
-      final googleAuth = googleUser.authentication;
-
-      final credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
-      );
-
-      await auth.signInWithCredential(credential);
-    } on FirebaseAuthException catch (error) {
-      throw AuthException(_firebaseErrorMessage(error));
-    } on GoogleSignInException catch (error) {
-      throw AuthException('Google sign-in failed: ${error.description}');
-    } on AuthException {
-      rethrow;
-    } catch (_) {
-      throw const AuthException(
-        'Google sign-in could not be completed. Please try again.',
+      await _callAuthFunction(
+        'send_registration_verification_code',
+        <String, dynamic>{
+          'email': email.trim().toLowerCase(),
+          'displayName': displayName.trim(),
+        },
+        fallbackMessage: 'Failed to send the verification code.',
       );
     } finally {
       _clearLoading();
     }
   }
 
-  Future<void> signInWithApple() async {
-    final connectivity = await Connectivity().checkConnectivity();
-    if (connectivity.contains(ConnectivityResult.none)) {
-      throw const AuthException(
-        'You are offline. Please check your internet connection and try again.',
-      );
-    }
-
+  Future<void> completeRegistration({
+    required String email,
+    required String code,
+    required String password,
+    required String displayName,
+  }) async {
+    await _ensureOnline();
     final auth = _requireFirebaseAuth();
-    _setLoading(AuthMethod.apple);
+    _setLoading();
 
     try {
-      if (!(Platform.isIOS || Platform.isMacOS)) {
+      final result = await _callAuthFunction(
+        'complete_email_registration',
+        <String, dynamic>{
+          'email': email.trim().toLowerCase(),
+          'code': code.trim(),
+          'password': password,
+          'displayName': displayName.trim(),
+        },
+        fallbackMessage: 'Email verification failed.',
+      );
+
+      final customToken = result['customToken'] as String?;
+      if (customToken == null || customToken.isEmpty) {
         throw const AuthException(
-          'Apple sign-in is only available on iOS and macOS.',
+          'The account was verified, but sign in could not be completed. Please try signing in.',
         );
       }
-
-      final rawNonce = _generateNonce();
-      final nonce = _sha256OfString(rawNonce);
-
-      final appleCredential = await SignInWithApple.getAppleIDCredential(
-        scopes: const <AppleIDAuthorizationScopes>[
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-        nonce: nonce,
-      );
-
-      final idToken = appleCredential.identityToken;
-      if (idToken == null) {
-        throw const AuthException(
-          'Apple sign-in returned no identity token. Please try again.',
-        );
-      }
-
-      final credential = OAuthProvider(
-        'apple.com',
-      ).credential(idToken: idToken, rawNonce: rawNonce);
-
-      await auth.signInWithCredential(credential);
+      await auth.signInWithCustomToken(customToken);
     } on FirebaseAuthException catch (error) {
       throw AuthException(_firebaseErrorMessage(error));
-    } on SignInWithAppleAuthorizationException catch (error) {
-      throw AuthException('Apple sign-in failed: ${error.message}.');
-    } on AuthException {
-      rethrow;
-    } catch (_) {
-      throw const AuthException(
-        'Apple sign-in could not be completed. Please try again.',
-      );
     } finally {
       _clearLoading();
     }
   }
 
-  Future<void> startPhoneNumberSignIn(String phoneNumber) async {
-    final connectivity = await Connectivity().checkConnectivity();
-    if (connectivity.contains(ConnectivityResult.none)) {
-      throw const AuthException(
-        'You are offline. Please check your internet connection and try again.',
-      );
-    }
-
-    final auth = _requireFirebaseAuth();
-    final normalizedPhone = phoneNumber.trim();
-    if (normalizedPhone.isEmpty) {
-      throw const AuthException('Enter a valid phone number.');
-    }
-
-    _setLoading(AuthMethod.phone);
-    _verificationId = null;
-    _pendingPhoneNumber = null;
-    notifyListeners();
-
-    final completer = Completer<void>();
+  Future<void> sendPasswordResetCode(String email) async {
+    await _ensureOnline();
+    _setLoading();
 
     try {
-      await auth.verifyPhoneNumber(
-        phoneNumber: normalizedPhone,
-        timeout: const Duration(seconds: 60),
-        verificationCompleted: (credential) async {
-          try {
-            await auth.signInWithCredential(credential);
-            _verificationId = null;
-            _pendingPhoneNumber = null;
-            if (!completer.isCompleted) {
-              completer.complete();
-            }
-          } on FirebaseAuthException catch (error) {
-            if (!completer.isCompleted) {
-              completer.completeError(
-                AuthException(_firebaseErrorMessage(error)),
-              );
-            }
-          }
-        },
-        verificationFailed: (error) {
-          if (!completer.isCompleted) {
-            completer.completeError(
-              AuthException(_firebaseErrorMessage(error)),
-            );
-          }
-        },
-        codeSent: (verificationId, resendToken) {
-          _verificationId = verificationId;
-          _pendingPhoneNumber = normalizedPhone;
-          notifyListeners();
-
-          if (!completer.isCompleted) {
-            completer.complete();
-          }
-        },
-        codeAutoRetrievalTimeout: (verificationId) {
-          _verificationId = verificationId;
-          _pendingPhoneNumber = normalizedPhone;
-          notifyListeners();
-
-          if (!completer.isCompleted) {
-            completer.complete();
-          }
-        },
-      );
-
-      await completer.future.timeout(
-        const Duration(seconds: 35),
-        onTimeout: () {
-          throw const AuthException(
-            'Verification is taking longer than expected. Please check your network and request the code again.',
-          );
-        },
-      );
-    } on FirebaseAuthException catch (error) {
-      throw AuthException(_firebaseErrorMessage(error));
-    } on AuthException {
-      rethrow;
-    } catch (_) {
-      throw const AuthException(
-        'Phone verification could not be started. Please try again.',
+      await _callAuthFunction(
+        'send_password_reset_code',
+        <String, dynamic>{'email': email.trim().toLowerCase()},
+        fallbackMessage: 'Failed to send the password reset code.',
       );
     } finally {
       _clearLoading();
     }
   }
 
-  Future<void> confirmPhoneCode(String smsCode) async {
-    final auth = _requireFirebaseAuth();
-    final code = smsCode.trim();
-    if (code.isEmpty) {
-      throw const AuthException('Enter the verification code.');
-    }
-
-    final verificationId = _verificationId;
-    if (verificationId == null) {
-      throw const AuthException(
-        'No phone verification is in progress. Request a new code.',
-      );
-    }
-
-    _setLoading(AuthMethod.phone);
+  Future<void> completePasswordReset({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    await _ensureOnline();
+    _setLoading();
 
     try {
-      final credential = PhoneAuthProvider.credential(
-        verificationId: verificationId,
-        smsCode: code,
-      );
-
-      await auth.signInWithCredential(credential);
-      _verificationId = null;
-      _pendingPhoneNumber = null;
-    } on FirebaseAuthException catch (error) {
-      throw AuthException(_firebaseErrorMessage(error));
+      await _callAuthFunction('complete_password_reset', <String, dynamic>{
+        'email': email.trim().toLowerCase(),
+        'code': code.trim(),
+        'password': newPassword,
+      }, fallbackMessage: 'Password reset failed.');
     } finally {
       _clearLoading();
     }
-  }
-
-  void clearPhoneVerification() {
-    _verificationId = null;
-    _pendingPhoneNumber = null;
-    notifyListeners();
   }
 
   Future<void> signOut() async {
     final auth = _firebaseAuth;
     if (auth == null) {
       _isSignedIn = false;
-      _activeMethod = null;
-      _verificationId = null;
-      _pendingPhoneNumber = null;
       notifyListeners();
       return;
     }
 
     try {
       await auth.signOut();
-      try {
-        await GoogleSignIn.instance.signOut();
-      } catch (_) {
-        // Ignore Google cleanup errors after Firebase sign-out.
-      }
     } finally {
       _isSignedIn = false;
-      _activeMethod = null;
-      _verificationId = null;
-      _pendingPhoneNumber = null;
       notifyListeners();
     }
   }
@@ -348,59 +199,71 @@ class AuthProvider extends ChangeNotifier {
     super.dispose();
   }
 
-  void _setLoading(AuthMethod method) {
+  Future<Map<String, dynamic>> _callAuthFunction(
+    String name,
+    Map<String, dynamic> data, {
+    required String fallbackMessage,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable(name);
+      final result = await callable.call<Map<String, dynamic>>(data);
+      return result.data;
+    } on FirebaseFunctionsException catch (error) {
+      throw AuthException(error.message ?? fallbackMessage);
+    } on AuthException {
+      rethrow;
+    } catch (error) {
+      debugPrint('Authentication function $name failed: $error');
+      throw AuthException(fallbackMessage);
+    }
+  }
+
+  Future<void> _ensureOnline() async {
+    final connectivity = await _connectivity.checkConnectivity();
+    if (connectivity.contains(ConnectivityResult.none)) {
+      throw const AuthException(
+        'You are offline. Please check your internet connection and try again.',
+      );
+    }
+  }
+
+  FirebaseFunctions get _functions =>
+      _firebaseFunctions ??
+      FirebaseFunctions.instanceFor(region: _functionsRegion);
+
+  void _setLoading() {
     _isLoading = true;
-    _activeMethod = method;
     notifyListeners();
   }
 
   void _clearLoading() {
     _isLoading = false;
-    _activeMethod = null;
     notifyListeners();
   }
 
   String _firebaseErrorMessage(FirebaseAuthException error) {
     switch (error.code) {
-      case 'invalid-verification-code':
-        return 'The verification code is invalid.';
-      case 'invalid-verification-id':
-        return 'The verification session expired. Request a new code.';
-      case 'session-expired':
-        return 'The verification code expired. Request a new code.';
+      case 'invalid-email':
+        return 'Enter a valid email address.';
+      case 'invalid-credential':
+      case 'user-not-found':
+      case 'wrong-password':
+        return 'The email or password is incorrect.';
+      case 'email-already-in-use':
+        return 'An account already exists for this email. Please sign in.';
+      case 'weak-password':
+        return 'Choose a stronger password.';
       case 'too-many-requests':
         return 'Too many attempts. Please wait and try again.';
       case 'user-disabled':
         return 'This account has been disabled.';
-      case 'account-exists-with-different-credential':
-        return 'An account already exists with a different sign-in method.';
-      case 'invalid-credential':
-        return 'Invalid credentials. Try again.';
-      case 'missing-phone-number':
-        return 'Enter a phone number.';
-      case 'invalid-phone-number':
-        return 'The phone number format is invalid.';
+      case 'network-request-failed':
+        return 'A network error occurred. Check your connection and try again.';
       case 'operation-not-allowed':
-        return 'This sign-in method is not enabled in Firebase Authentication.';
+        return 'Email and password sign in is not enabled in Firebase Authentication.';
       default:
         return error.message ?? 'Authentication failed. Please try again.';
     }
-  }
-
-  String _generateNonce([int length = 32]) {
-    const charset =
-        '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
-    final random = Random.secure();
-    return List<String>.generate(
-      length,
-      (_) => charset[random.nextInt(charset.length)],
-    ).join();
-  }
-
-  String _sha256OfString(String input) {
-    final bytes = utf8.encode(input);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
   }
 
   FirebaseAuth _requireFirebaseAuth() {

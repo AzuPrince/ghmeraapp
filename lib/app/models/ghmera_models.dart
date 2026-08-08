@@ -1,18 +1,3 @@
-enum AuthMethod { phone, google, apple }
-
-extension AuthMethodLabel on AuthMethod {
-  String get label {
-    switch (this) {
-      case AuthMethod.phone:
-        return 'Phone';
-      case AuthMethod.google:
-        return 'Google';
-      case AuthMethod.apple:
-        return 'Apple';
-    }
-  }
-}
-
 enum VerificationBadge {
   emailVerified,
   phoneVerified,

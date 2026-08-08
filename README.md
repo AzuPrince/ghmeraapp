@@ -17,21 +17,30 @@ samples, guidance on mobile development, and a full API reference.
 
 ## Firebase Auth Setup
 
-This app now uses real Firebase Authentication for Google, Apple, and Phone.
+This app uses Firebase email/password authentication. New accounts are created
+only after the user enters the 6-digit code sent to their email, and forgotten
+passwords are reset with the same code-based flow.
 
 Before running on devices, complete these setup steps:
 
 1. Create a Firebase project and add Android and iOS apps.
-2. Enable these providers in Firebase Console -> Authentication -> Sign-in method:
-	- Google
-	- Apple
-	- Phone
+2. Enable Email/Password in Firebase Console -> Authentication -> Sign-in method.
 3. Add platform config files:
 	- `android/app/google-services.json`
 	- `ios/Runner/GoogleService-Info.plist`
 4. Run `flutterfire configure` (recommended) to generate `firebase_options.dart`.
-5. For Apple sign-in, enable "Sign in with Apple" capability in Xcode for the iOS target.
-6. For iOS phone auth testing, ensure APNs and required URL schemes are configured in the Firebase iOS setup.
+5. Copy `functions/.env.example` to `functions/.env` for local development and
+   put `SMTP_PASSWORD=...` in `functions/.secret.local`. Both local files are
+   ignored by Git.
+6. Store the production SMTP password in Firebase Secret Manager before deploy:
+
+```bash
+firebase functions:secrets:set SMTP_PASSWORD
+```
+
+The configured mail server is `mail.peatechservice.com:465` with SSL, the SMTP
+username is `info@peatechservice.com`, and messages are sent as
+`PEATECH SERVICES LLC <mail@peatechservice.com>`.
 
 ## Workflow API Backend
 
