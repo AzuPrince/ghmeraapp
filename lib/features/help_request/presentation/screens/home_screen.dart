@@ -14,9 +14,15 @@ import 'home_menu_screen.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
 import 'create_request_screen.dart';
 
+const LatLng _defaultMapCenter = LatLng(5.6037, -0.1870);
+
 enum _CommunityRequestMenuAction { removeFromView, reportAccount, blockAccount }
 
-enum _MyRequestMenuAction { editThisRequest, hideThisRequest, deleteThisRequest }
+enum _MyRequestMenuAction {
+  editThisRequest,
+  hideThisRequest,
+  deleteThisRequest,
+}
 
 enum _AcceptedRequestMenuAction {
   messageReceiver,
@@ -1142,7 +1148,8 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                     message.content,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(sheetContext).textTheme.titleSmall?.copyWith(
+                    style: Theme.of(sheetContext).textTheme.titleSmall
+                        ?.copyWith(
                           fontWeight: FontWeight.w800,
                           color: const Color(0xFF103B36),
                         ),
@@ -1155,8 +1162,8 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                         ? 'Sent by you • ${_relativeTime(message.createdAt)}'
                         : 'From ${peer?.fullName ?? "Peer"} • ${_relativeTime(message.createdAt)}',
                     style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF61726F),
-                        ),
+                      color: const Color(0xFF61726F),
+                    ),
                   ),
                 ),
                 _MenuSheetActionTile(
@@ -1311,7 +1318,9 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                             decoration: BoxDecoration(
                               color: const Color(0xFFEFF6F5),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFFB2DFDB)),
+                              border: Border.all(
+                                color: const Color(0xFFB2DFDB),
+                              ),
                               boxShadow: const [
                                 BoxShadow(
                                   color: Color(0x08000000),
@@ -1381,8 +1390,7 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
                         final message = messages[messages.length - 1 - index];
-                        final isMe =
-                            message.senderId == appState.currentUserId;
+                        final isMe = message.senderId == appState.currentUserId;
 
                         return Align(
                           alignment: isMe
@@ -2899,7 +2907,8 @@ class _NotificationsScreen extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
                   child: Text(
                     'Clear all notifications?',
-                    style: Theme.of(sheetContext).textTheme.titleSmall?.copyWith(
+                    style: Theme.of(sheetContext).textTheme.titleSmall
+                        ?.copyWith(
                           fontWeight: FontWeight.w800,
                           color: const Color(0xFF103B36),
                         ),
@@ -2910,8 +2919,8 @@ class _NotificationsScreen extends StatelessWidget {
                   child: Text(
                     'This will remove all notifications from your list. This action cannot be undone.',
                     style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF61726F),
-                        ),
+                      color: const Color(0xFF61726F),
+                    ),
                   ),
                 ),
                 _MenuSheetActionTile(
@@ -2962,7 +2971,8 @@ class _NotificationsScreen extends StatelessWidget {
                     notification.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(sheetContext).textTheme.titleSmall?.copyWith(
+                    style: Theme.of(sheetContext).textTheme.titleSmall
+                        ?.copyWith(
                           fontWeight: FontWeight.w800,
                           color: const Color(0xFF103B36),
                         ),
@@ -2973,30 +2983,33 @@ class _NotificationsScreen extends StatelessWidget {
                   child: Text(
                     'Received ${_relativeTime(notification.createdAt)}',
                     style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF61726F),
-                        ),
+                      color: const Color(0xFF61726F),
+                    ),
                   ),
                 ),
                 if (!notification.isRead)
                   _MenuSheetActionTile(
                     icon: Icons.mark_email_read_outlined,
                     label: 'Mark as read',
-                    onTap: () => Navigator.of(sheetContext)
-                        .pop(_NotificationAction.markAsRead),
+                    onTap: () => Navigator.of(
+                      sheetContext,
+                    ).pop(_NotificationAction.markAsRead),
                   )
                 else
                   _MenuSheetActionTile(
                     icon: Icons.mark_email_unread_outlined,
                     label: 'Mark as unread',
-                    onTap: () => Navigator.of(sheetContext)
-                        .pop(_NotificationAction.markAsUnread),
+                    onTap: () => Navigator.of(
+                      sheetContext,
+                    ).pop(_NotificationAction.markAsUnread),
                   ),
                 _MenuSheetActionTile(
                   icon: Icons.delete_outline_rounded,
                   label: 'Delete notification',
                   foregroundColor: const Color(0xFF9A2F2F),
-                  onTap: () => Navigator.of(sheetContext)
-                      .pop(_NotificationAction.delete),
+                  onTap: () => Navigator.of(
+                    sheetContext,
+                  ).pop(_NotificationAction.delete),
                 ),
               ],
             ),
@@ -3060,9 +3073,9 @@ class _NotificationsScreen extends StatelessWidget {
                 Text(
                   'Matches, messages, safety alerts, reciprocity warnings, and wellbeing reminders land here.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF61726F),
-                        height: 1.45,
-                      ),
+                    color: const Color(0xFF61726F),
+                    height: 1.45,
+                  ),
                 ),
                 const SizedBox(height: 18),
                 if (notifications.isEmpty)
@@ -3606,7 +3619,11 @@ class _NeighborhoodHelpersMapSheetState
                 child: FlutterMap(
                   options: MapOptions(
                     initialCenter: data.mapCenter!,
-                    initialZoom: data.helperMarkers.length > 5 ? 11.8 : 12.8,
+                    initialZoom: data.helperMarkers.isEmpty
+                        ? 10.5
+                        : data.helperMarkers.length > 5
+                        ? 11.8
+                        : 12.8,
                   ),
                   children: [
                     TileLayer(
@@ -3736,7 +3753,8 @@ class _NeighborhoodHelpersMapSheetState
     return _NeighborhoodHelpersMapData(
       currentUserPoint: currentUserPoint,
       mapCenter:
-          currentUserPoint ?? (markers.isNotEmpty ? markers.first.point : null),
+          currentUserPoint ??
+          (markers.isNotEmpty ? markers.first.point : _defaultMapCenter),
       helperMarkers: markers,
     );
   }
@@ -3837,7 +3855,7 @@ class _NeighborhoodHelpersMapData {
   final LatLng? mapCenter;
   final List<_NeighborhoodHelperMarkerData> helperMarkers;
 
-  bool get hasMap => mapCenter != null && helperMarkers.isNotEmpty;
+  bool get hasMap => mapCenter != null;
 }
 
 class _NeighborhoodHelperMarkerData {
@@ -4151,7 +4169,11 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
                 child: FlutterMap(
                   options: MapOptions(
                     initialCenter: data.mapCenter!,
-                    initialZoom: data.requestMarkers.length > 5 ? 11.8 : 12.8,
+                    initialZoom: data.requestMarkers.isEmpty
+                        ? 10.5
+                        : data.requestMarkers.length > 5
+                        ? 11.8
+                        : 12.8,
                   ),
                   children: [
                     TileLayer(
@@ -4244,8 +4266,15 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
         continue;
       }
 
+      final requesterCity = entry.requester.city.trim();
+      final geocodingQuery =
+          requesterCity.isNotEmpty &&
+              !locationLabel.toLowerCase().contains(requesterCity.toLowerCase())
+          ? '$locationLabel, $requesterCity'
+          : locationLabel;
+
       final approximatePoint = await _resolvePointFromQuery(
-        locationLabel,
+        geocodingQuery,
         cache: cache,
       );
       if (approximatePoint == null) {
@@ -4281,7 +4310,8 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
     return _RequestLocationsMapData(
       currentUserPoint: currentUserPoint,
       mapCenter:
-          currentUserPoint ?? (markers.isNotEmpty ? markers.first.point : null),
+          currentUserPoint ??
+          (markers.isNotEmpty ? markers.first.point : _defaultMapCenter),
       requestMarkers: markers,
     );
   }
@@ -4377,7 +4407,7 @@ class _RequestLocationsMapData {
   final LatLng? mapCenter;
   final List<_RequestLocationMarkerData> requestMarkers;
 
-  bool get hasMap => mapCenter != null && requestMarkers.isNotEmpty;
+  bool get hasMap => mapCenter != null;
 }
 
 class _RequestLocationMarkerData {
@@ -5166,9 +5196,9 @@ class _MyRequestTile extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF103B36),
-              ),
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF103B36),
+          ),
         ),
         subtitle: Text(
           '${request.category.label} • ${request.status.label}',
@@ -5894,9 +5924,9 @@ class _AdminMetricCard extends StatelessWidget {
             Text(
               value,
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF103B36),
-                  ),
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF103B36),
+              ),
             ),
             const SizedBox(height: 6),
             Text(
@@ -5944,9 +5974,9 @@ class _SafetyFeatureRow extends StatelessWidget {
               Text(
                 title,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF103B36),
-                    ),
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF103B36),
+                ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -6054,9 +6084,9 @@ class _EmptyStateCard extends StatelessWidget {
           Text(
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF103B36),
-                ),
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF103B36),
+            ),
           ),
           const SizedBox(height: 8),
           Text(
