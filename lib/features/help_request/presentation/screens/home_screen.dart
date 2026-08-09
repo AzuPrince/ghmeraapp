@@ -1043,6 +1043,7 @@ class _ThreadScreenState extends State<_ThreadScreen> {
   late final TextEditingController _messageController;
   bool _showProtectedBanner = false;
   bool _hasShownProtectedBanner = false;
+  bool _isSending = false;
   Timer? _bannerTimer;
 
   @override
@@ -1077,27 +1078,39 @@ class _ThreadScreenState extends State<_ThreadScreen> {
     MessageThreadEntity thread,
   ) async {
     final content = _messageController.text.trim();
-    if (content.isEmpty) {
+    if (content.isEmpty || _isSending) {
       return;
     }
 
-    final sent = await appState.sendMessage(
-      threadId: thread.id,
-      content: content,
-    );
-    if (!mounted) {
-      return;
-    }
+    setState(() {
+      _isSending = true;
+    });
 
-    if (!sent) {
-      showGhmeraSnackBar(context, message: 'Message could not be sent.');
-      return;
-    }
+    try {
+      final sent = await appState.sendMessage(
+        threadId: thread.id,
+        content: content,
+      );
+      if (!mounted) {
+        return;
+      }
 
-    _messageController.clear();
-    if (!_hasShownProtectedBanner) {
-      _hasShownProtectedBanner = true;
-      _startBannerTimer();
+      if (!sent) {
+        showGhmeraSnackBar(context, message: 'Message could not be sent.');
+        return;
+      }
+
+      _messageController.clear();
+      if (!_hasShownProtectedBanner) {
+        _hasShownProtectedBanner = true;
+        _startBannerTimer();
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
     }
   }
 
@@ -1441,17 +1454,26 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                             labelText: 'Message',
                             hintText: 'Reply inside protected chat',
                           ),
-                          onSubmitted: isMessagingBlocked
+                          onSubmitted: (isMessagingBlocked || _isSending)
                               ? null
                               : (_) => _sendMessage(appState, thread),
                         ),
                       ),
                       const SizedBox(width: 12),
                       FilledButton(
-                        onPressed: isMessagingBlocked
+                        onPressed: (isMessagingBlocked || _isSending)
                             ? null
                             : () => _sendMessage(appState, thread),
-                        child: const Text('Send'),
+                        child: _isSending
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Send'),
                       ),
                     ],
                   ),
