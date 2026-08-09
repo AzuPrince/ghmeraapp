@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +24,8 @@ enum _AcceptedRequestMenuAction {
   reportHelpGiver,
   cancelRequest,
 }
+
+enum _MessageAction { copy, reply, report, delete }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -1098,6 +1101,142 @@ class _ThreadScreenState extends State<_ThreadScreen> {
     }
   }
 
+  Future<void> _showMessageActionsSheet({
+    required MessageEntity message,
+    required bool isMe,
+    required UserEntity? peer,
+    required HelpRequestEntity request,
+  }) async {
+    final action = await showModalBottomSheet<_MessageAction>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SheetDragHandle(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+                  child: Text(
+                    message.content,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(sheetContext).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF103B36),
+                        ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                  child: Text(
+                    isMe
+                        ? 'Sent by you • ${_relativeTime(message.createdAt)}'
+                        : 'From ${peer?.fullName ?? "Peer"} • ${_relativeTime(message.createdAt)}',
+                    style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF61726F),
+                        ),
+                  ),
+                ),
+                _MenuSheetActionTile(
+                  icon: Icons.copy_rounded,
+                  label: 'Copy message text',
+                  onTap: () =>
+                      Navigator.of(sheetContext).pop(_MessageAction.copy),
+                ),
+                _MenuSheetActionTile(
+                  icon: Icons.reply_rounded,
+                  label: 'Reply to message',
+                  onTap: () =>
+                      Navigator.of(sheetContext).pop(_MessageAction.reply),
+                ),
+                if (isMe)
+                  _MenuSheetActionTile(
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Delete message',
+                    foregroundColor: const Color(0xFF9A2F2F),
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop(_MessageAction.delete),
+                  ),
+                if (!isMe && peer != null)
+                  _MenuSheetActionTile(
+                    icon: Icons.report_outlined,
+                    label: 'Report message / safety flag',
+                    foregroundColor: const Color(0xFF9A2F2F),
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop(_MessageAction.report),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) {
+      return;
+    }
+
+    final appState = context.read<GhmeraAppState>();
+    switch (action) {
+      case _MessageAction.copy:
+        await Clipboard.setData(ClipboardData(text: message.content));
+        if (mounted) {
+          showGhmeraSnackBar(
+            context,
+            message: 'Message text copied to clipboard.',
+            type: SnackBarType.success,
+          );
+        }
+        return;
+      case _MessageAction.reply:
+        _messageController.text = 'Replying to "${message.content}": ';
+        _messageController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _messageController.text.length),
+        );
+        return;
+      case _MessageAction.delete:
+        final deleted = await appState.deleteMessage(
+          threadId: message.threadId,
+          messageId: message.id,
+        );
+        if (mounted) {
+          showGhmeraSnackBar(
+            context,
+            message: deleted ? 'Message deleted.' : 'Could not delete message.',
+            type: deleted ? SnackBarType.success : SnackBarType.error,
+          );
+        }
+        return;
+      case _MessageAction.report:
+        if (peer != null) {
+          final submitted = await showModalBottomSheet<bool>(
+            context: context,
+            isScrollControlled: true,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            builder: (_) =>
+                _SafetyReportSheet(request: request, reportedUser: peer),
+          );
+
+          if (submitted == true && mounted) {
+            showGhmeraSnackBar(
+              context,
+              message: 'Safety report submitted to moderators.',
+            );
+          }
+        }
+        return;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1234,45 +1373,53 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                           alignment: isMe
                               ? Alignment.centerRight
                               : Alignment.centerLeft,
-                          child: Container(
-                            constraints: const BoxConstraints(maxWidth: 320),
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: isMe
-                                  ? const Color(0xFF103B36)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x0F000000),
-                                  blurRadius: 16,
-                                  offset: Offset(0, 8),
-                                ),
-                              ],
+                          child: GestureDetector(
+                            onTap: () => _showMessageActionsSheet(
+                              message: message,
+                              isMe: isMe,
+                              peer: peer,
+                              request: request,
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  message.content,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: isMe
-                                        ? Colors.white
-                                        : const Color(0xFF223532),
-                                    height: 1.4,
+                            child: Container(
+                              constraints: const BoxConstraints(maxWidth: 320),
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: isMe
+                                    ? const Color(0xFF103B36)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x0F000000),
+                                    blurRadius: 16,
+                                    offset: Offset(0, 8),
                                   ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  _relativeTime(message.createdAt),
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: isMe
-                                        ? Colors.white.withValues(alpha: 0.68)
-                                        : const Color(0xFF758481),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    message.content,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: isMe
+                                          ? Colors.white
+                                          : const Color(0xFF223532),
+                                      height: 1.4,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _relativeTime(message.createdAt),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: isMe
+                                          ? Colors.white.withValues(alpha: 0.68)
+                                          : const Color(0xFF758481),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         );

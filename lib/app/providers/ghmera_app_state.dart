@@ -1235,6 +1235,22 @@ class GhmeraAppState extends ChangeNotifier {
     return response?.result?['messageId'] != null;
   }
 
+  Future<bool> deleteMessage({
+    required String threadId,
+    required String messageId,
+  }) async {
+    final initialCount = _messages.length;
+    _messages.removeWhere(
+      (message) => message.id == messageId && message.threadId == threadId,
+    );
+    final removed = _messages.length < initialCount;
+
+    if (removed) {
+      notifyListeners();
+    }
+    return removed;
+  }
+
   Future<HelpRequestEntity?> createHelpRequest({
     required String title,
     required String description,
