@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter/material.dart';
@@ -14,7 +15,7 @@ import 'create_request_screen.dart';
 
 enum _CommunityRequestMenuAction { removeFromView, reportAccount, blockAccount }
 
-enum _MyRequestMenuAction { hideThisRequest, deleteThisRequest }
+enum _MyRequestMenuAction { editThisRequest, hideThisRequest, deleteThisRequest }
 
 enum _AcceptedRequestMenuAction {
   messageReceiver,
@@ -890,6 +891,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 _MenuSheetActionTile(
+                  icon: Icons.edit_outlined,
+                  label: 'Edit this request',
+                  onTap: () => Navigator.of(
+                    sheetContext,
+                  ).pop(_MyRequestMenuAction.editThisRequest),
+                ),
+                _MenuSheetActionTile(
                   icon: Icons.visibility_off_outlined,
                   label: 'Hide this request',
                   onTap: () => Navigator.of(
@@ -917,6 +925,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final appState = context.read<GhmeraAppState>();
     switch (selectedAction) {
+      case _MyRequestMenuAction.editThisRequest:
+        await _editRequest(request);
+        return;
       case _MyRequestMenuAction.hideThisRequest:
         final hidden = appState.hideRequestFromCurrentUser(request.id);
         showGhmeraSnackBar(
@@ -1027,6 +1038,9 @@ class _ThreadScreen extends StatefulWidget {
 
 class _ThreadScreenState extends State<_ThreadScreen> {
   late final TextEditingController _messageController;
+  bool _showProtectedBanner = false;
+  bool _hasShownProtectedBanner = false;
+  Timer? _bannerTimer;
 
   @override
   void initState() {
@@ -1036,8 +1050,23 @@ class _ThreadScreenState extends State<_ThreadScreen> {
 
   @override
   void dispose() {
+    _bannerTimer?.cancel();
     _messageController.dispose();
     super.dispose();
+  }
+
+  void _startBannerTimer() {
+    _bannerTimer?.cancel();
+    setState(() {
+      _showProtectedBanner = true;
+    });
+    _bannerTimer = Timer(const Duration(seconds: 8), () {
+      if (mounted) {
+        setState(() {
+          _showProtectedBanner = false;
+        });
+      }
+    });
   }
 
   Future<void> _sendMessage(
@@ -1063,6 +1092,10 @@ class _ThreadScreenState extends State<_ThreadScreen> {
     }
 
     _messageController.clear();
+    if (!_hasShownProtectedBanner) {
+      _hasShownProtectedBanner = true;
+      _startBannerTimer();
+    }
   }
 
   @override
@@ -1114,20 +1147,77 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF5F1E8),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: Text(
-                      isMessagingBlocked
-                          ? 'Messaging is disabled because one of the accounts in this conversation is blocked. You can still review the conversation history.'
-                          : thread.messageRequestPending
-                          ? 'This thread is still a message request. Contact details stay hidden until the match is accepted and both sides consent.'
-                          : 'Protected chat is active. Contact sharing still requires explicit consent from both users.',
-                      style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
-                    ),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeInOut,
+                    child: (_showProtectedBanner || isMessagingBlocked)
+                        ? Container(
+                            margin: const EdgeInsets.only(bottom: 14),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFF6F5),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFB2DFDB)),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x08000000),
+                                  blurRadius: 10,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF103B36),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.shield_outlined,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    isMessagingBlocked
+                                        ? 'Messaging is disabled because one of the accounts in this conversation is blocked. You can still review the conversation history.'
+                                        : thread.messageRequestPending
+                                        ? 'This thread is still a message request. Contact details stay hidden until the match is accepted and both sides consent.'
+                                        : 'Protected chat is active. Contact sharing still requires explicit consent from both users.',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      height: 1.4,
+                                      color: const Color(0xFF103B36),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                if (!isMessagingBlocked)
+                                  InkWell(
+                                    onTap: () {
+                                      _bannerTimer?.cancel();
+                                      setState(() {
+                                        _showProtectedBanner = false;
+                                      });
+                                    },
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(4.0),
+                                      child: Icon(
+                                        Icons.close_rounded,
+                                        size: 18,
+                                        color: Color(0xFF61726F),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          )
+                        : const SizedBox.shrink(),
                   ),
                   const SizedBox(height: 16),
                   Expanded(
@@ -2885,7 +2975,7 @@ class _RequestsTab extends StatelessWidget {
               const SizedBox(height: 14),
               const _SectionHeader(
                 title: 'Your requests',
-                subtitle: 'Tap a request to edit its details.',
+                subtitle: 'Tap a request to view options or edit details.',
               ),
               const SizedBox(height: 10),
               if (editableRequests.isEmpty)
@@ -2898,7 +2988,7 @@ class _RequestsTab extends StatelessWidget {
                   _MyRequestTile(
                     request: request,
                     onLongPress: () => onLongPressMyRequest(request),
-                    onTap: () => onEditRequest(request),
+                    onTap: () => onLongPressMyRequest(request),
                   ),
             ],
           ),
@@ -4711,15 +4801,16 @@ class _MyRequestTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 4),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(5),
-        boxShadow: const <BoxShadow>[
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE6ECEB)),
+        boxShadow: const [
           BoxShadow(
-            color: Color(0x10000000),
-            blurRadius: 20,
-            offset: Offset(0, 10),
+            color: Color(0x0A000000),
+            blurRadius: 16,
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -4727,13 +4818,13 @@ class _MyRequestTile extends StatelessWidget {
         onTap: onTap,
         onLongPress: onLongPress,
         minVerticalPadding: 0,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: Container(
-          width: 48,
-          height: 48,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
-            color: const Color(0xFFE7F1EE),
-            borderRadius: BorderRadius.circular(5),
+            color: const Color(0xFF103B36).withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(
             Icons.assignment_outlined,
@@ -4744,9 +4835,10 @@ class _MyRequestTile extends StatelessWidget {
           request.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF103B36),
+              ),
         ),
         subtitle: Text(
           '${request.category.label} • ${request.status.label}',
@@ -4756,7 +4848,6 @@ class _MyRequestTile extends StatelessWidget {
             context,
           ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF61726F)),
         ),
-        trailing: const Icon(Icons.edit_outlined),
       ),
     );
   }
@@ -5282,15 +5373,36 @@ class _SheetDragHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.only(top: 8, bottom: 14),
-        width: 40,
-        height: 4.5,
-        decoration: BoxDecoration(
-          color: const Color(0xFFC4D1CF),
-          borderRadius: BorderRadius.circular(3),
-        ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4.5,
+              decoration: BoxDecoration(
+                color: const Color(0xFFC4D1CF),
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: SizedBox(
+              width: 32,
+              height: 32,
+              child: IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded, size: 20),
+                color: const Color(0xFF61726F),
+                padding: EdgeInsets.zero,
+                tooltip: 'Close',
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
