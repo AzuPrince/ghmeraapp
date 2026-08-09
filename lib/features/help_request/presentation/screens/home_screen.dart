@@ -1221,62 +1221,62 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                   ),
                   const SizedBox(height: 16),
                   Expanded(
-                    child: ListView(
-                      children: [
-                        for (final message in messages)
-                          Align(
-                            alignment:
-                                message.senderId == appState.currentUserId
-                                ? Alignment.centerRight
-                                : Alignment.centerLeft,
-                            child: Container(
-                              constraints: const BoxConstraints(maxWidth: 320),
-                              margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color:
-                                    message.senderId == appState.currentUserId
-                                    ? const Color(0xFF103B36)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(5),
-                                boxShadow: const <BoxShadow>[
-                                  BoxShadow(
-                                    color: Color(0x0F000000),
-                                    blurRadius: 16,
-                                    offset: Offset(0, 8),
+                    child: ListView.builder(
+                      reverse: true,
+                      padding: const EdgeInsets.only(bottom: 8),
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) {
+                        final message = messages[messages.length - 1 - index];
+                        final isMe =
+                            message.senderId == appState.currentUserId;
+
+                        return Align(
+                          alignment: isMe
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: Container(
+                            constraints: const BoxConstraints(maxWidth: 320),
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: isMe
+                                  ? const Color(0xFF103B36)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x0F000000),
+                                  blurRadius: 16,
+                                  offset: Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  message.content,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: isMe
+                                        ? Colors.white
+                                        : const Color(0xFF223532),
+                                    height: 1.4,
                                   ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    message.content,
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color:
-                                          message.senderId ==
-                                              appState.currentUserId
-                                          ? Colors.white
-                                          : const Color(0xFF223532),
-                                      height: 1.4,
-                                    ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  _relativeTime(message.createdAt),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: isMe
+                                        ? Colors.white.withValues(alpha: 0.68)
+                                        : const Color(0xFF758481),
                                   ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _relativeTime(message.createdAt),
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color:
-                                          message.senderId ==
-                                              appState.currentUserId
-                                          ? Colors.white.withValues(alpha: 0.68)
-                                          : const Color(0xFF758481),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
-                      ],
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 12),
