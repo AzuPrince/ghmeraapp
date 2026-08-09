@@ -260,7 +260,7 @@ class AuthProvider extends ChangeNotifier {
       case 'network-request-failed':
         return 'A network error occurred. Check your connection and try again.';
       case 'operation-not-allowed':
-        return 'Email and password sign in is not enabled in Firebase Authentication.';
+        return 'Email and password sign in is temporarily unavailable. Please try again later.';
       default:
         return error.message ?? 'Authentication failed. Please try again.';
     }
@@ -270,7 +270,7 @@ class AuthProvider extends ChangeNotifier {
     final auth = _firebaseAuth;
     if (auth == null) {
       throw const AuthException(
-        'Firebase is not configured yet. Run flutterfire configure and add platform config files.',
+        'Sign in is temporarily unavailable. Please try again later.',
       );
     }
     return auth;
