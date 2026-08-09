@@ -865,6 +865,33 @@ class WorkflowOperationsMixin:
                 'You are not allowed to send a message to this thread.',
                 status_code=403,
             )
+        if _copy_string_list(thread.get('blockedByIds')):
+            raise WorkflowError(
+                'Messaging is disabled because an account in this conversation is blocked.',
+                status_code=403,
+            )
+
+        current_user = self.current_user()
+        current_user_blocked_ids = set(
+            _copy_string_list(current_user.get('blockedUserIds'))
+        )
+        for participant_id in participant_ids:
+            if participant_id == self.current_user_id:
+                continue
+            participant = self.find_user(participant_id)
+            if participant is None:
+                continue
+            participant_blocked_ids = set(
+                _copy_string_list(participant.get('blockedUserIds'))
+            )
+            if (
+                participant_id in current_user_blocked_ids
+                or self.current_user_id in participant_blocked_ids
+            ):
+                raise WorkflowError(
+                    'Messaging is disabled because an account in this conversation is blocked.',
+                    status_code=403,
+                )
 
         now = _now_iso()
         message_id = self.next_id('message', self.messages)

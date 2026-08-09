@@ -1085,6 +1085,9 @@ class _ThreadScreenState extends State<_ThreadScreen> {
             final peer = appState.peerForThread(thread);
             final request = appState.requestById(thread.requestId);
             final messages = appState.messagesForThread(thread.id);
+            final isMessagingBlocked = appState.isMessagingBlockedForThread(
+              thread,
+            );
             final theme = Theme.of(context);
             final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
@@ -1114,7 +1117,9 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                       borderRadius: BorderRadius.circular(5),
                     ),
                     child: Text(
-                      thread.messageRequestPending
+                      isMessagingBlocked
+                          ? 'Messaging is disabled because one of the accounts in this conversation is blocked. You can still review the conversation history.'
+                          : thread.messageRequestPending
                           ? 'This thread is still a message request. Contact details stay hidden until the match is accepted and both sides consent.'
                           : 'Protected chat is active. Contact sharing still requires explicit consent from both users.',
                       style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
@@ -1187,6 +1192,7 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                       Expanded(
                         child: TextField(
                           controller: _messageController,
+                          enabled: !isMessagingBlocked,
                           minLines: 1,
                           maxLines: 4,
                           textCapitalization: TextCapitalization.sentences,
@@ -1194,12 +1200,16 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                             labelText: 'Message',
                             hintText: 'Reply inside protected chat',
                           ),
-                          onSubmitted: (_) => _sendMessage(appState, thread),
+                          onSubmitted: isMessagingBlocked
+                              ? null
+                              : (_) => _sendMessage(appState, thread),
                         ),
                       ),
                       const SizedBox(width: 12),
                       FilledButton(
-                        onPressed: () => _sendMessage(appState, thread),
+                        onPressed: isMessagingBlocked
+                            ? null
+                            : () => _sendMessage(appState, thread),
                         child: const Text('Send'),
                       ),
                     ],

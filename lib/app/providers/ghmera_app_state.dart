@@ -483,6 +483,20 @@ class GhmeraAppState extends ChangeNotifier {
     return _findUserById(otherId);
   }
 
+  bool isMessagingBlockedForThread(MessageThreadEntity thread) {
+    if (thread.blockedByIds.isNotEmpty) {
+      return true;
+    }
+
+    final peer = peerForThread(thread);
+    if (peer == null) {
+      return true;
+    }
+
+    return currentUser.blockedUserIds.contains(peer.id) ||
+        peer.blockedUserIds.contains(_currentUserId);
+  }
+
   List<UserEntity> helperCandidatesForRequest(HelpRequestEntity request) {
     if (request.acceptedHelperId case final acceptedHelperId?) {
       final acceptedHelper = _findUserById(acceptedHelperId);
@@ -863,6 +877,20 @@ class GhmeraAppState extends ChangeNotifier {
       didChange = true;
     }
 
+    for (var index = 0; index < _threads.length; index++) {
+      final thread = _threads[index];
+      if (!thread.participantIds.contains(_currentUserId) ||
+          !thread.participantIds.contains(userId) ||
+          thread.blockedByIds.contains(_currentUserId)) {
+        continue;
+      }
+
+      _threads[index] = thread.copyWith(
+        blockedByIds: <String>[...thread.blockedByIds, _currentUserId],
+      );
+      didChange = true;
+    }
+
     if (!didChange) {
       return false;
     }
@@ -902,15 +930,27 @@ class GhmeraAppState extends ChangeNotifier {
       didChange = true;
     }
 
+    for (var index = 0; index < _threads.length; index++) {
+      final thread = _threads[index];
+      if (!thread.participantIds.contains(_currentUserId) ||
+          !thread.participantIds.contains(userId) ||
+          !thread.blockedByIds.contains(_currentUserId)) {
+        continue;
+      }
+
+      _threads[index] = thread.copyWith(
+        blockedByIds: thread.blockedByIds
+            .where((blockedById) => blockedById != _currentUserId)
+            .toList(),
+      );
+      didChange = true;
+    }
+
     if (!didChange) {
       return false;
     }
 
-    _replaceUser(
-      currentUser.copyWith(
-        blockedUserIds: blockedUserIds,
-      ),
-    );
+    _replaceUser(currentUser.copyWith(blockedUserIds: blockedUserIds));
 
     notifyListeners();
     return true;
@@ -1175,6 +1215,13 @@ class GhmeraAppState extends ChangeNotifier {
   }) async {
     final trimmedContent = content.trim();
     if (trimmedContent.isEmpty) {
+      return false;
+    }
+
+    final thread = _threads
+        .where((candidate) => candidate.id == threadId)
+        .firstOrNull;
+    if (thread == null || isMessagingBlockedForThread(thread)) {
       return false;
     }
 
@@ -2197,7 +2244,9 @@ class GhmeraAppState extends ChangeNotifier {
     }
 
     final badges = <VerificationBadge>{
-      if (normalizedEmail != null && normalizedEmail.isNotEmpty)
+      if (normalizedEmail != null &&
+          normalizedEmail.isNotEmpty &&
+          authUser.emailVerified)
         VerificationBadge.emailVerified,
       if (normalizedPhone != null && normalizedPhone.isNotEmpty)
         VerificationBadge.phoneVerified,

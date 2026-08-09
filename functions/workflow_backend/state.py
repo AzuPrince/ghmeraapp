@@ -152,7 +152,10 @@ class WorkflowState(WorkflowOperationsMixin, WorkflowMatchingMixin):
                 return None
             return self.find_user(helper_id)
 
-        return self.find_user(str(request.get('requesterId', '')).strip())
+        if request.get('acceptedHelperId') == self.current_user_id:
+            return self.find_user(str(request.get('requesterId', '')).strip())
+
+        return None
 
     def replace_request(self, updated_request: dict[str, Any]) -> None:
         request_id = updated_request.get('id')

@@ -72,12 +72,20 @@ class AuthProvider extends ChangeNotifier {
     _setLoading();
 
     try {
-      await auth.signInWithEmailAndPassword(
+      final credential = await auth.signInWithEmailAndPassword(
         email: email.trim().toLowerCase(),
         password: password,
       );
+      if (credential.user?.emailVerified != true) {
+        await auth.signOut();
+        throw const AuthException(
+          'Verify your email with the 6-digit sign-up code before signing in.',
+        );
+      }
     } on FirebaseAuthException catch (error) {
       throw AuthException(_firebaseErrorMessage(error));
+    } on AuthException {
+      rethrow;
     } catch (error) {
       debugPrint('Email sign-in failed: $error');
       throw const AuthException('Sign in failed. Please try again.');

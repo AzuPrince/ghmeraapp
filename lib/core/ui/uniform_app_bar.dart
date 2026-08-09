@@ -4,15 +4,15 @@ const double _uniformBackIconSize = 22;
 const double _uniformBackIconWeight = 700;
 const Color _uniformHeadingColor = Color(0xFF132B27);
 
-TextStyle uniformHeadingTextStyle(BuildContext context) {
+TextStyle uniformHeadingTextStyle(BuildContext context, {Color? color}) {
   return Theme.of(context).textTheme.titleLarge?.copyWith(
         fontWeight: FontWeight.w900,
-        color: _uniformHeadingColor,
+        color: color ?? _uniformHeadingColor,
       ) ??
-      const TextStyle(
+      TextStyle(
         fontSize: 22,
         fontWeight: FontWeight.w900,
-        color: _uniformHeadingColor,
+        color: color ?? _uniformHeadingColor,
       );
 }
 
@@ -20,34 +20,56 @@ Widget uniformAppBarTitle(
   BuildContext context, {
   required String title,
   String? subtitle,
+  Color? titleColor,
+  Color? subtitleColor,
+  bool isDarkBackground = false,
 }) {
+  final effectiveTitleColor =
+      titleColor ?? (isDarkBackground ? Colors.white : _uniformHeadingColor);
+  final effectiveSubtitleColor = subtitleColor ??
+      (isDarkBackground
+          ? Colors.white.withValues(alpha: 0.8)
+          : const Color(0xFF596865));
+
   final trimmedSubtitle = subtitle?.trim();
   if (trimmedSubtitle == null || trimmedSubtitle.isEmpty) {
-    return Text(title, style: uniformHeadingTextStyle(context));
+    return Text(
+      title,
+      style: uniformHeadingTextStyle(context, color: effectiveTitleColor),
+    );
   }
 
   return Column(
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(title, style: uniformHeadingTextStyle(context)),
+      Text(
+        title,
+        style: uniformHeadingTextStyle(context, color: effectiveTitleColor),
+      ),
       Text(
         trimmedSubtitle,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: const Color(0xFF596865)),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: effectiveSubtitleColor,
+            ),
       ),
     ],
   );
 }
 
-IconButton uniformBackButton(BuildContext context, {VoidCallback? onPressed}) {
+IconButton uniformBackButton(
+  BuildContext context, {
+  VoidCallback? onPressed,
+  Color? color,
+  bool isDarkBackground = false,
+}) {
   return IconButton(
     onPressed: onPressed ?? () => Navigator.of(context).maybePop(),
-    icon: const Icon(
+    icon: Icon(
       Icons.arrow_back_ios_new_rounded,
       size: _uniformBackIconSize,
       weight: _uniformBackIconWeight,
+      color: color ?? (isDarkBackground ? Colors.white : null),
     ),
     tooltip: 'Back',
   );

@@ -576,6 +576,100 @@ def _cors_headers(origin: str | None) -> dict[str, str]:
     }
 
 
+def _require_workflow_identity(req: https_fn.Request) -> dict[str, Any]:
+    authorization = str(req.headers.get('Authorization') or '').strip()
+    scheme, separator, token = authorization.partition(' ')
+    if not separator or scheme.lower() != 'bearer' or not token.strip():
+        raise WorkflowError('Sign in is required.', status_code=401)
+
+    try:
+        decoded_token = admin_auth.verify_id_token(
+            token.strip(),
+            check_revoked=True,
+        )
+    except Exception:
+        logger.warning('Workflow API rejected an invalid authentication token.')
+        raise WorkflowError(
+            'Your session is no longer valid. Please sign in again.',
+            status_code=401,
+        )
+
+    uid = str(decoded_token.get('uid') or decoded_token.get('sub') or '').strip()
+    email = _normalize_email(str(decoded_token.get('email') or ''))
+    email_verified = decoded_token.get('email_verified') is True
+    if not uid or not email or not email_verified:
+        raise WorkflowError(
+            'The signed-in account does not have a verified email identity.',
+            status_code=403,
+        )
+
+    return {'uid': uid, 'email': email}
+
+
+def _resolve_authenticated_workflow_user_id(
+    raw_database: dict[str, Any],
+    *,
+    uid: str,
+    email: str,
+) -> str:
+    canonical_user_id = f'user_{uid}'
+    email_matches: list[str] = []
+
+    for bucket_key, raw_bucket in raw_database.items():
+        if str(bucket_key).startswith('_') or not isinstance(raw_bucket, dict):
+            continue
+
+        raw_user = raw_bucket.get('user')
+        if not isinstance(raw_user, dict):
+            continue
+
+        user_id = str(raw_user.get('id') or '').strip()
+        user_email = _normalize_email(str(raw_user.get('email') or ''))
+        if not user_id or user_email != email:
+            continue
+
+        if user_id == canonical_user_id:
+            return canonical_user_id
+        email_matches.append(user_id)
+
+    unique_matches = list(dict.fromkeys(email_matches))
+    if len(unique_matches) == 1:
+        return unique_matches[0]
+
+    raise WorkflowError(
+        'The signed-in account could not be matched to the app profile.',
+        status_code=403,
+    )
+
+
+def _secure_workflow_body(
+    body: dict[str, Any],
+    identity: dict[str, Any],
+) -> dict[str, Any]:
+    raw_database = body.get('database')
+    if not isinstance(raw_database, dict):
+        raise WorkflowError('Missing app-state database payload.')
+
+    authenticated_email = _normalize_email(str(identity.get('email') or ''))
+    current_user_id = _resolve_authenticated_workflow_user_id(
+        raw_database,
+        uid=str(identity.get('uid') or '').strip(),
+        email=authenticated_email,
+    )
+
+    secured_database = dict(raw_database)
+    raw_meta = raw_database.get('_meta')
+    secured_meta = dict(raw_meta) if isinstance(raw_meta, dict) else {}
+    secured_meta['currentUserId'] = current_user_id
+    secured_meta['currentUserEmail'] = authenticated_email
+    secured_database['_meta'] = secured_meta
+
+    secured_body = dict(body)
+    secured_body['currentUserId'] = current_user_id
+    secured_body['database'] = secured_database
+    return secured_body
+
+
 @https_fn.on_request()
 def workflow_api(req: https_fn.Request) -> https_fn.Response:
     headers = _cors_headers(req.headers.get('Origin'))
@@ -596,7 +690,9 @@ def workflow_api(req: https_fn.Request) -> https_fn.Response:
         if not isinstance(body, dict):
             raise WorkflowError('Invalid JSON body.')
 
-        updated_database, result = apply_workflow_operation(body)
+        identity = _require_workflow_identity(req)
+        secured_body = _secure_workflow_body(body, identity)
+        updated_database, result = apply_workflow_operation(secured_body)
         return https_fn.Response(
             json.dumps({'ok': True, 'database': updated_database, 'result': result}),
             status=200,
