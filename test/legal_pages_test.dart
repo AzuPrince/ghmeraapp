@@ -22,6 +22,9 @@ void main() {
     expect(find.text('About Ghmera'), findsOneWidget);
     expect(find.text('Last updated: August 9, 2026'), findsOneWidget);
     expect(find.textContaining('PEATECH SERVICES LLC'), findsWidgets);
+    expect(find.textContaining('United States-based company'), findsOneWidget);
+    expect(find.text('United States operations'), findsOneWidget);
+    expect(find.text('Transparency and accountability'), findsOneWidget);
     expect(find.text('Accounts and verification'), findsOneWidget);
     expect(find.text('Safety and emergencies'), findsOneWidget);
   });
@@ -32,12 +35,22 @@ void main() {
     await _pumpPage(tester, const TermsOfUseScreen());
 
     expect(find.text('Last updated: August 9, 2026'), findsOneWidget);
+    expect(find.textContaining('United States-based company'), findsOneWidget);
     expect(
       find.text('4. No Emergency or Professional Service'),
       findsOneWidget,
     );
     expect(find.text('5. Community Conduct'), findsOneWidget);
     expect(find.text('7. Location and Map Information'), findsOneWidget);
+    expect(find.text('14. United States Consumer Rights'), findsOneWidget);
+    expect(
+      find.text('15. Intellectual Property and Copyright Reports'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('17. Applicable Law and General Provisions'),
+      findsOneWidget,
+    );
     expect(find.textContaining('info@peatechservice.com'), findsWidgets);
   });
 
@@ -47,12 +60,16 @@ void main() {
     await _pumpPage(tester, const PrivacyPolicyScreen());
 
     expect(find.text('Last updated: August 9, 2026'), findsOneWidget);
+    expect(find.textContaining('United States-based company'), findsOneWidget);
     expect(
       find.text('4. Email Verification and Password Reset'),
       findsOneWidget,
     );
     expect(find.text('5. Location, Geocoding, and Maps'), findsOneWidget);
     expect(find.textContaining('Google Firebase'), findsOneWidget);
-    expect(find.text('11. Your Choices and Rights'), findsOneWidget);
+    expect(find.text('9. No Sale or Targeted Advertising'), findsOneWidget);
+    expect(find.text('12. U.S. State Privacy Rights'), findsOneWidget);
+    expect(find.text('13. Exercising Privacy Rights'), findsOneWidget);
+    expect(find.text('14. Your Privacy Choices'), findsOneWidget);
   });
 }

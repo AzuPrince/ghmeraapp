@@ -209,9 +209,15 @@ class AboutGhmeraScreen extends StatelessWidget {
               _LegalMetaCard(
                 lastUpdated: 'August 9, 2026',
                 summary:
-                    'Ghmera is a community-support platform operated by PEATECH SERVICES LLC. It helps people request, offer, and coordinate practical or emotional support.',
+                    'Ghmera is a community-support platform operated by PEATECH SERVICES LLC, a United States-based company. It helps people request, offer, and coordinate practical or emotional support.',
               ),
               SizedBox(height: 14),
+              _DetailSection(
+                title: 'United States operations',
+                text:
+                    'PEATECH SERVICES LLC operates Ghmera from a United States business context. The service is intended to follow applicable U.S. consumer-protection, privacy, safety, accessibility, and electronic-commerce requirements while preserving any nonwaivable rights users have where they live.',
+              ),
+              SizedBox(height: 12),
               _DetailSection(
                 title: 'Our purpose',
                 text:
@@ -240,6 +246,12 @@ class AboutGhmeraScreen extends StatelessWidget {
                 title: 'Technology and maps',
                 text:
                     'The app uses Firebase-hosted authentication and backend services, PEATECH SERVICES LLC email infrastructure, device location and geocoding services, and OpenStreetMap map tiles. Map markers are intended to be approximate and may be delayed, incomplete, or inaccurate.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: 'Transparency and accountability',
+                text:
+                    'We aim to explain important data practices and platform limits in plain language, provide meaningful privacy choices, respond to verified rights requests, and improve the service when users identify safety, accessibility, or reliability concerns.',
               ),
               SizedBox(height: 12),
               _DetailSection(
@@ -283,13 +295,13 @@ class TermsOfUseScreen extends StatelessWidget {
               _LegalMetaCard(
                 lastUpdated: 'August 9, 2026',
                 summary:
-                    'These Terms form an agreement between you and PEATECH SERVICES LLC for access to Ghmera, its community features, and related services.',
+                    'These Terms form an agreement between you and PEATECH SERVICES LLC, a United States-based company, for access to Ghmera, its community features, and related services.',
               ),
               SizedBox(height: 14),
               _DetailSection(
                 title: '1. Acceptance of Terms',
                 text:
-                    'By creating an account, selecting the acceptance button, or using Ghmera, you confirm that you have read and agree to these Terms and the Privacy Policy. If you do not agree, do not create an account or use the service.',
+                    'By creating an account, selecting the acceptance button, or using Ghmera, you confirm that you have read and agree to these Terms and the Privacy Policy and consent to receive required records and notices electronically. If you do not agree, do not create an account or use the service. You may keep a copy of these Terms for your records.',
               ),
               SizedBox(height: 12),
               _DetailSection(
@@ -365,7 +377,31 @@ class TermsOfUseScreen extends StatelessWidget {
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '14. Updates and Contact',
+                title: '14. United States Consumer Rights',
+                text:
+                    'These Terms are intended to operate consistently with applicable U.S. federal and state consumer-protection law. Nothing in them waives a warranty, remedy, forum, disclosure, cancellation right, or other protection that cannot lawfully be waived. Any limitation applies only to the extent permitted in the place and circumstances involved.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '15. Intellectual Property and Copyright Reports',
+                text:
+                    'Ghmera software, branding, visual design, and company-created materials belong to PEATECH SERVICES LLC or its licensors and may not be copied, reverse engineered, or used beyond what law and these Terms permit. To report content you believe infringes copyright, email info@peatechservice.com with your contact details, the protected work, the challenged content and its location, the basis for your claim, and a statement that the report is accurate and made in good faith. We may request a signature or other information required by U.S. law.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '16. Indemnification',
+                text:
+                    'To the extent permitted by law, you agree to defend and indemnify PEATECH SERVICES LLC and its personnel against third-party claims, losses, and reasonable costs arising from your unlawful content, misuse of Ghmera, violation of another person’s rights, or material breach of these Terms, except to the extent caused by PEATECH SERVICES LLC.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '17. Applicable Law and General Provisions',
+                text:
+                    'Applicable U.S. federal and state law governs as determined by conflict-of-laws rules and the facts of a dispute, without removing mandatory rights or a legally available forum. Before filing a claim, you and PEATECH SERVICES LLC should try in good faith to resolve it through info@peatechservice.com. If a provision is unenforceable, the remainder stays in effect. A failure to enforce a provision is not a waiver. You may not transfer your account or these Terms without our consent.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '18. Updates and Contact',
                 text:
                     'We may revise these Terms for product, security, operational, or legal reasons. Material changes will be identified by a new last-updated date and, where required, additional notice or consent. Questions may be sent to info@peatechservice.com.',
               ),
@@ -405,13 +441,13 @@ class PrivacyPolicyScreen extends StatelessWidget {
               _LegalMetaCard(
                 lastUpdated: 'August 9, 2026',
                 summary:
-                    'This policy explains how PEATECH SERVICES LLC collects, uses, shares, stores, and protects information when you use Ghmera.',
+                    'This policy explains how PEATECH SERVICES LLC, a United States-based company, collects, uses, shares, stores, and protects information when you use Ghmera.',
               ),
               SizedBox(height: 14),
               _DetailSection(
-                title: '1. Scope and Data Controller',
+                title: '1. Scope and Company Responsible for Information',
                 text:
-                    'This policy applies to Ghmera applications, backend functions, support communications, and related services. PEATECH SERVICES LLC determines why and how the information described here is processed. Privacy questions and rights requests may be sent to info@peatechservice.com.',
+                    'This policy applies to Ghmera applications, backend functions, support communications, and related services. PEATECH SERVICES LLC is based in the United States and is the company responsible for the information described here, including as a controller or business where those terms apply. Sections 2 through 5 describe the categories collected at or before collection. Privacy questions and rights requests may be sent to info@peatechservice.com.',
               ),
               SizedBox(height: 12),
               _DetailSection(
@@ -445,51 +481,69 @@ class PrivacyPolicyScreen extends StatelessWidget {
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '7. Legal Bases',
+                title: '7. Sensitive Information and Permission',
                 text:
-                    'Where data-protection law requires a legal basis, processing may be necessary to perform our agreement with you, based on your consent for optional location or profile choices, required by law, needed to protect vital interests, or based on legitimate interests such as platform security, fraud prevention, moderation, service improvement, and protecting users.',
+                    'Precise geolocation, help descriptions, mood check-ins, safety reports, and some profile details may be treated as sensitive information under applicable law. We use them only for disclosed service, safety, security, legal, and support purposes—not to infer characteristics for advertising. Optional location collection requires device permission and can be disabled, although related features may stop working.',
               ),
               SizedBox(height: 12),
               _DetailSection(
                 title: '8. When Information Is Shared',
                 text:
-                    'We do not sell personal data. Information may be shared with matched or eligible users as the service requires; with Google Firebase for authentication, Cloud Functions, and Firestore hosting; with our email infrastructure for code delivery; with mapping, geocoding, device, and network providers; with advisers or vendors supporting operations; and with authorities or affected persons when reasonably necessary for law, rights, fraud prevention, or safety.',
+                    'Information may be disclosed to matched or eligible users as the service requires; to Google Firebase for authentication, Cloud Functions, and Firestore hosting; to our email infrastructure for code delivery; to mapping, geocoding, device, and network providers; to advisers or vendors supporting operations; and to authorities or affected persons when reasonably necessary for law, rights, fraud prevention, or safety. Providers may use information only for their disclosed services or as law permits.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '9. Retention and Deletion',
+                title: '9. No Sale or Targeted Advertising',
+                text:
+                    'Ghmera does not currently sell personal information, share it for cross-context behavioral advertising, process it for targeted advertising, or exchange it for money. If these practices change, this policy will be updated and any notice, consent, opt-out method, or recognized preference signal required by applicable law will be provided before the new practice begins.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '10. Retention and Deletion',
                 text:
                     'We retain information while needed to provide Ghmera and for reasonable periods afterward for account recovery, security, safety reviews, disputes, backups, and legal obligations. Verification codes expire after 15 minutes and are normally deleted after successful use or replacement. Safety records may be kept longer where necessary. You may request deletion, but some records may be retained where law or legitimate safety needs require it.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '10. Security',
+                title: '11. Security',
                 text:
                     'We use access controls, authenticated backend operations, expiring verification codes, hashed code records, encrypted network connections, provider security measures, and moderation controls. No internet service can guarantee absolute security. Protect your device and credentials and contact us promptly if you suspect unauthorized access.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '11. Your Choices and Rights',
+                title: '12. U.S. State Privacy Rights',
                 text:
-                    'You can edit profile information, change privacy and contact-sharing settings, disable automatic location, deny device location permission, block users, and stop using the service. Depending on applicable law, you may request access, correction, deletion, portability, restriction, or objection, and may withdraw consent without affecting earlier lawful processing. Send requests to info@peatechservice.com; identity verification may be required.',
+                    'Residents of California and other states with applicable privacy laws may have rights to confirm processing; know, access, correct, delete, or obtain a portable copy of information; opt out of sale, sharing, targeted advertising, or certain profiling; limit certain uses of sensitive information; appeal a denied request; and receive equal service without unlawful discrimination for exercising a right. These rights are subject to legal scope, exceptions, and verification requirements.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '12. International Processing',
+                title: '13. Exercising Privacy Rights',
                 text:
-                    'Ghmera and its service providers may process information in countries other than your own. Where required, we use contractual, technical, or legal safeguards intended to protect information during international processing or transfer.',
+                    'Send a request to info@peatechservice.com and describe the right you want to exercise. We may verify your identity by matching account information or asking you to confirm control of your email. An authorized agent may act where law permits, subject to proof of authority and identity verification. We will respond within the period required by applicable law. If we deny an appealable request, reply with “Privacy Appeal” and explain why you believe the decision should be reconsidered.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '13. Children',
+                title: '14. Your Privacy Choices',
                 text:
-                    'Ghmera is intended for adults and is not directed to anyone under 18 or the age of legal majority where they live. If you believe a child has provided personal information, contact info@peatechservice.com so the situation can be reviewed and appropriate action taken.',
+                    'You can edit profile information, change privacy and contact-sharing settings, disable automatic location, deny device location permission, block users, and stop using the service. Depending on applicable law, you may also restrict or object to processing and withdraw consent without affecting earlier lawful processing.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '14. Policy Changes and Complaints',
+                title: '15. United States and International Processing',
                 text:
-                    'We may update this policy for product, security, operational, or legal reasons. Material changes will be identified by a revised date and additional notice where required. You may contact us first with a concern and may also complain to the data-protection authority available under applicable law.',
+                    'PEATECH SERVICES LLC is based in the United States. Ghmera and its service providers may therefore process information in the United States and other countries outside your own. Where required, we use contractual, technical, or legal safeguards intended to protect information during international processing or transfer.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '16. Children',
+                text:
+                    'Ghmera is intended for adults and is not directed to anyone under 18 or the age of legal majority where they live. We do not knowingly collect personal information from children under 13. If you believe a child has provided personal information, contact info@peatechservice.com so we can investigate and, where appropriate, delete the information and close the account.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '17. Policy Changes and Complaints',
+                text:
+                    'We may update this policy for product, security, operational, or legal reasons. Material changes will be identified by a revised date and additional notice or consent where required. You may contact us first with a concern and may also complain to the U.S. state regulator, attorney general, consumer-protection agency, or other privacy authority available under applicable law.',
               ),
             ],
           ),
