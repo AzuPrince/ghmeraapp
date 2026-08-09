@@ -77,10 +77,10 @@ class HomeMenuScreen extends StatelessWidget {
                     child: Text(
                       'Use this menu to review important legal information, terms of service, and privacy standards.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF103B36),
-                            height: 1.45,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        color: const Color(0xFF103B36),
+                        height: 1.45,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -91,9 +91,9 @@ class HomeMenuScreen extends StatelessWidget {
               _MenuTile(
                 item: item,
                 onTap: () {
-                  Navigator.of(context).push<void>(
-                    MaterialPageRoute<void>(builder: item.builder),
-                  );
+                  Navigator.of(
+                    context,
+                  ).push<void>(MaterialPageRoute<void>(builder: item.builder));
                 },
               ),
           ],
@@ -140,7 +140,10 @@ class _MenuTile extends StatelessWidget {
         ],
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 10,
+        ),
         onTap: onTap,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         leading: Container(
@@ -155,18 +158,18 @@ class _MenuTile extends StatelessWidget {
         title: Text(
           item.title,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF103B36),
-              ),
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF103B36),
+          ),
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
             item.subtitle,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF5A696E),
-                  height: 1.35,
-                ),
+              color: const Color(0xFF5A696E),
+              height: 1.35,
+            ),
           ),
         ),
         trailing: const Icon(
@@ -203,28 +206,46 @@ class AboutGhmeraScreen extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(16, 16, 16, 32),
           child: Column(
             children: [
+              _LegalMetaCard(
+                lastUpdated: 'August 9, 2026',
+                summary:
+                    'Ghmera is a community-support platform operated by PEATECH SERVICES LLC. It helps people request, offer, and coordinate practical or emotional support.',
+              ),
+              SizedBox(height: 14),
               _DetailSection(
-                title: 'Our mission',
+                title: 'Our purpose',
                 text:
-                    'Ghmera connects people who need help with trusted people who can offer support in practical and emotional ways. The goal is to create reliable, dignity-first community assistance.',
+                    'Ghmera is designed to make local support easier to find while preserving dignity, choice, and accountability. Members can create help requests, volunteer, review potential matches, and coordinate through in-app chat.',
               ),
               SizedBox(height: 12),
               _DetailSection(
                 title: 'How matching works',
                 text:
-                    'Requests are matched using categories, urgency, location relevance, reciprocity balance, and trust signals. Contact sharing is limited until a match is accepted and consent is confirmed.',
+                    'Matching considers the requested category, urgency, approximate location, availability, service radius, trust signals, reciprocity, blocks, and safety requirements. A suggestion is not a guarantee, endorsement, employment relationship, or professional background check.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: 'Community values',
+                title: 'Accounts and verification',
                 text:
-                    'Ghmera is built around empathy, accountability, privacy, and safety. Every user is expected to communicate respectfully, avoid harmful behavior, and follow platform safeguards.',
+                    'Members sign up with an email address and password, then confirm a six-digit code delivered by PEATECH SERVICES LLC. Verification confirms control of the email address; it does not guarantee a person’s identity, qualifications, intentions, or conduct.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: 'Support and updates',
+                title: 'Safety and emergencies',
                 text:
-                    'The app evolves through regular updates that improve trust logic, safety controls, and user experience. Review release notes and policy updates whenever a new version is installed.',
+                    'Ghmera provides blocking, reporting, consent, moderation, and high-risk warnings, but it is not an emergency service. Do not use the app as a replacement for police, ambulance, fire, medical, crisis, legal, or financial professionals. Contact local emergency services when anyone faces immediate danger.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: 'Technology and maps',
+                text:
+                    'The app uses Firebase-hosted authentication and backend services, PEATECH SERVICES LLC email infrastructure, device location and geocoding services, and OpenStreetMap map tiles. Map markers are intended to be approximate and may be delayed, incomplete, or inaccurate.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: 'Contact and feedback',
+                text:
+                    'Questions about Ghmera, safety, privacy, or these policies can be sent to info@peatechservice.com. Please do not include passwords, verification codes, financial credentials, or unnecessary sensitive information in support messages.',
               ),
             ],
           ),
@@ -260,63 +281,93 @@ class TermsOfUseScreen extends StatelessWidget {
           child: Column(
             children: [
               _LegalMetaCard(
-                lastUpdated: 'April 23, 2026',
+                lastUpdated: 'August 9, 2026',
                 summary:
-                    'These Terms govern access to and use of Ghmera services, features, and community interactions.',
+                    'These Terms form an agreement between you and PEATECH SERVICES LLC for access to Ghmera, its community features, and related services.',
               ),
               SizedBox(height: 14),
               _DetailSection(
                 title: '1. Acceptance of Terms',
                 text:
-                    'By creating an account, accessing, or using Ghmera, you acknowledge that you have read, understood, and agree to be bound by these Terms and all related policies. If you do not agree, you must stop using the service immediately.',
+                    'By creating an account, selecting the acceptance button, or using Ghmera, you confirm that you have read and agree to these Terms and the Privacy Policy. If you do not agree, do not create an account or use the service.',
               ),
               SizedBox(height: 12),
               _DetailSection(
                 title: '2. Eligibility and Account Responsibility',
                 text:
-                    'You must provide accurate account information and keep your credentials secure. You are responsible for all activity under your account, including activity from authorized sessions on your devices.',
+                    'You must be at least 18 years old, or the age of legal majority where you live, and legally able to enter this agreement. Provide accurate information, use only your own email address, keep your password and verification codes confidential, and promptly report suspected account misuse.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '3. Service Scope and Availability',
+                title: '3. What Ghmera Provides',
                 text:
-                    'Ghmera provides tools for coordinating community support, communication, and safety workflows. We may modify, suspend, or discontinue features at any time. We do not guarantee uninterrupted availability in every region, network, or device environment.',
+                    'Ghmera provides technology for publishing help requests, suggesting or accepting matches, displaying approximate map locations, communicating in-app, recording completion and reviews, and using safety tools. Ghmera does not employ users, supervise meetings, guarantee a match or outcome, or verify every statement made by a member.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '4. Acceptable Use and Prohibited Conduct',
+                title: '4. No Emergency or Professional Service',
                 text:
-                    'You may use Ghmera only for lawful and respectful support activity. Prohibited conduct includes harassment, threats, fraud, impersonation, hate speech, exploitative requests, dissemination of malicious content, and any behavior that creates safety risk for others.',
+                    'Ghmera is not an emergency-response, healthcare, crisis, legal, financial, transport, safeguarding, or background-check service. Do not rely on it where delay could cause injury, loss, or danger. Contact qualified professionals or local emergency services when appropriate.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '5. User Content and License',
+                title: '5. Community Conduct',
                 text:
-                    'You retain ownership of content you submit, but grant Ghmera a limited license to host, process, and display that content to operate the service. You represent that your content does not infringe third-party rights and complies with applicable law.',
+                    'Use Ghmera lawfully, honestly, and respectfully. You must not harass, threaten, discriminate, exploit, stalk, impersonate, defraud, solicit illegal goods or services, request unsafe transfers of money, distribute malware, disclose another person’s private information, manipulate reviews, evade blocks, or create content that risks harm.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '6. Safety, Moderation, and Enforcement',
+                title: '6. Requests, Matches, and In-Person Contact',
                 text:
-                    'Ghmera may investigate reports, review safety signals, and apply enforcement actions including warnings, feature restrictions, temporary suspension, or permanent account termination. Severe or unlawful conduct may be referred to competent authorities.',
+                    'You decide whether to create, accept, continue, or cancel a request. Review available profile and safety information, keep early communication in the app, meet in suitable public places where possible, avoid sharing unnecessary contact or financial information, and leave any interaction that feels unsafe. You are responsible for your own decisions and conduct.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '7. Disclaimers and Limitation of Liability',
+                title: '7. Location and Map Information',
                 text:
-                    'Ghmera is provided on an as-is and as-available basis. We do not warrant guaranteed outcomes for matches, response times, or user behavior. To the maximum extent permitted by law, Ghmera is not liable for indirect, incidental, special, or consequential damages arising from platform use.',
+                    'Location, distance, geocoding, and map results are estimates and may be inaccurate or unavailable. Do not use map markers as proof of a person’s identity, current position, safety, or ability to help. OpenStreetMap and device-platform services may have separate terms that apply to their services.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '8. Indemnification',
+                title: '8. User Content and Permission to Operate the Service',
                 text:
-                    'You agree to indemnify and hold harmless Ghmera and its affiliates from claims, liabilities, damages, and expenses resulting from your breach of these Terms, unlawful conduct, or misuse of the service.',
+                    'You retain ownership of content you submit. You give PEATECH SERVICES LLC a worldwide, non-exclusive, royalty-free license to host, store, reproduce, display, transmit, moderate, and otherwise process that content only as reasonably needed to operate, secure, improve, and enforce Ghmera. You must have the right to submit the content.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '9. Changes to Terms and Contact',
+                title: '9. Contact Sharing and Communications',
                 text:
-                    'We may update these Terms to reflect legal, security, and product changes. Material updates will be published with a revised last-updated date. Continued use after updates constitutes acceptance of the revised Terms.',
+                    'In-app chat is not a guarantee of confidentiality or end-to-end encryption. Contact details should be shared only when both participants consent. You must not use another member’s email address, phone number, messages, or location outside the agreed support purpose.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '10. Moderation and Account Enforcement',
+                text:
+                    'PEATECH SERVICES LLC may review reports and safety signals, preserve relevant records, remove content, limit features, cancel matches, warn, suspend, or terminate accounts, and cooperate with lawful authorities. Blocking stops supported interactions but cannot prevent contact that occurs outside Ghmera.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '11. Availability and Third-Party Services',
+                text:
+                    'Ghmera may change, interrupt, or discontinue features and does not guarantee uninterrupted service, data delivery, map coverage, email delivery, or compatibility with every device or region. Firebase, email, mapping, geocoding, network, and operating-system providers may affect availability.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '12. Disclaimers and Liability',
+                text:
+                    'Ghmera is provided on an as-is and as-available basis. To the fullest extent permitted by law, PEATECH SERVICES LLC disclaims implied warranties and is not responsible for user conduct, failed matches, inaccurate content, or indirect, incidental, special, exemplary, or consequential loss. Nothing in these Terms excludes rights or liability that cannot legally be excluded.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '13. Suspension, Termination, and Survival',
+                text:
+                    'You may stop using Ghmera at any time. We may restrict or end access where reasonably necessary for safety, security, legal compliance, prolonged inactivity, or a breach of these Terms. Provisions concerning content rights, enforcement, disclaimers, liability, and disputes survive termination where applicable.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '14. Updates and Contact',
+                text:
+                    'We may revise these Terms for product, security, operational, or legal reasons. Material changes will be identified by a new last-updated date and, where required, additional notice or consent. Questions may be sent to info@peatechservice.com.',
               ),
             ],
           ),
@@ -352,69 +403,93 @@ class PrivacyPolicyScreen extends StatelessWidget {
           child: Column(
             children: [
               _LegalMetaCard(
-                lastUpdated: 'April 23, 2026',
+                lastUpdated: 'August 9, 2026',
                 summary:
-                    'This Privacy Policy explains what data Ghmera collects, why it is processed, and the choices available to users.',
+                    'This policy explains how PEATECH SERVICES LLC collects, uses, shares, stores, and protects information when you use Ghmera.',
               ),
               SizedBox(height: 14),
               _DetailSection(
                 title: '1. Scope and Data Controller',
                 text:
-                    'This policy applies to personal data processed through Ghmera applications and related services. Ghmera acts as the data controller for account, safety, and service-operation data described in this policy.',
+                    'This policy applies to Ghmera applications, backend functions, support communications, and related services. PEATECH SERVICES LLC determines why and how the information described here is processed. Privacy questions and rights requests may be sent to info@peatechservice.com.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '2. Information We Collect',
+                title: '2. Account and Profile Information',
                 text:
-                    'We may collect profile information, account identifiers, help request content, communication metadata, trust and moderation signals, device/session identifiers, and approximate location context needed for matching and safety workflows.',
+                    'We process your email address, account identifier, verification status, display name, profile photo URL, phone number if provided, biography, city, area, availability, support categories, service radius, privacy choices, device/session records, blocks, mutes, trust indicators, and account restrictions. Passwords are handled through the authentication service and are not stored as readable text in the Ghmera app database.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '3. Legal Bases for Processing',
+                title: '3. Requests, Messages, and Safety Information',
                 text:
-                    'Depending on your jurisdiction, processing may rely on consent, contractual necessity, legitimate interests, legal obligations, and protection of vital interests such as user safety and fraud prevention.',
+                    'We process help requests, descriptions, categories, urgency, preferred times, attachments or labels, match activity, in-app messages, consent states, completion records, reviews, mood check-ins, reports, moderation status, and action logs. Other members may see information needed to evaluate a request or match according to the app’s visibility and privacy controls.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '4. How We Use Personal Data',
+                title: '4. Email Verification and Password Reset',
                 text:
-                    'Data is used to authenticate accounts, match helpers and requesters, deliver communications, provide customer support, enforce policies, prevent abuse, and improve reliability, safety, and performance of Ghmera features.',
+                    'Registration and password-reset codes are sent through PEATECH SERVICES LLC email infrastructure. Code records are protected using hashes, expire after a limited period, and are used to confirm control of an email address or authorize a password reset. Never send a verification code or password to another person.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '5. Sharing and Disclosure',
+                title: '5. Location, Geocoding, and Maps',
                 text:
-                    'We do not sell personal data. Data may be shared with service providers under contractual safeguards, with other users according to product controls, or with authorities where legally required for compliance or safety investigations.',
+                    'If you grant location permission or enable automatic location, Ghmera may process and store precise latitude and longitude to update your profile, estimate distance, and support matching. City, area, request locations, and approximate marker positions may be shown to other users. Device geocoding services convert place names and coordinates, while OpenStreetMap tile servers receive technical request data such as IP address and user-agent information when map tiles load.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '6. Data Retention',
+                title: '6. How We Use Information',
                 text:
-                    'We retain data only as long as needed for service delivery, safety review, dispute handling, and legal compliance. Retention periods vary by data type, risk profile, and applicable legal requirements.',
+                    'We use information to create and secure accounts, deliver email codes, operate requests and matches, calculate recommendations and reciprocity, display maps, enable chat, support wellbeing features, enforce consent and blocks, investigate reports, prevent abuse, provide support, maintain service reliability, and comply with legal obligations.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '7. Security Measures',
+                title: '7. Legal Bases',
                 text:
-                    'Ghmera applies administrative, technical, and organizational controls designed to protect personal data against unauthorized access, loss, or misuse. No system is absolutely secure, but safeguards are continuously reviewed and improved.',
+                    'Where data-protection law requires a legal basis, processing may be necessary to perform our agreement with you, based on your consent for optional location or profile choices, required by law, needed to protect vital interests, or based on legitimate interests such as platform security, fraud prevention, moderation, service improvement, and protecting users.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '8. Your Rights and Choices',
+                title: '8. When Information Is Shared',
                 text:
-                    'Subject to local law, you may request access, correction, deletion, portability, or restriction of processing, and may object to certain processing activities. You may also manage in-app privacy preferences and communication settings.',
+                    'We do not sell personal data. Information may be shared with matched or eligible users as the service requires; with Google Firebase for authentication, Cloud Functions, and Firestore hosting; with our email infrastructure for code delivery; with mapping, geocoding, device, and network providers; with advisers or vendors supporting operations; and with authorities or affected persons when reasonably necessary for law, rights, fraud prevention, or safety.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '9. Children and Sensitive Cases',
+                title: '9. Retention and Deletion',
                 text:
-                    'Ghmera is not intended for unlawful use or any activity that endangers minors. Where required, additional safeguards apply to vulnerable users and high-risk moderation events.',
+                    'We retain information while needed to provide Ghmera and for reasonable periods afterward for account recovery, security, safety reviews, disputes, backups, and legal obligations. Verification codes expire after 15 minutes and are normally deleted after successful use or replacement. Safety records may be kept longer where necessary. You may request deletion, but some records may be retained where law or legitimate safety needs require it.',
               ),
               SizedBox(height: 12),
               _DetailSection(
-                title: '10. International Transfers and Policy Updates',
+                title: '10. Security',
                 text:
-                    'Where data is processed across jurisdictions, Ghmera applies safeguards required by applicable law. We may update this policy periodically; material updates will be posted with an updated revision date.',
+                    'We use access controls, authenticated backend operations, expiring verification codes, hashed code records, encrypted network connections, provider security measures, and moderation controls. No internet service can guarantee absolute security. Protect your device and credentials and contact us promptly if you suspect unauthorized access.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '11. Your Choices and Rights',
+                text:
+                    'You can edit profile information, change privacy and contact-sharing settings, disable automatic location, deny device location permission, block users, and stop using the service. Depending on applicable law, you may request access, correction, deletion, portability, restriction, or objection, and may withdraw consent without affecting earlier lawful processing. Send requests to info@peatechservice.com; identity verification may be required.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '12. International Processing',
+                text:
+                    'Ghmera and its service providers may process information in countries other than your own. Where required, we use contractual, technical, or legal safeguards intended to protect information during international processing or transfer.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '13. Children',
+                text:
+                    'Ghmera is intended for adults and is not directed to anyone under 18 or the age of legal majority where they live. If you believe a child has provided personal information, contact info@peatechservice.com so the situation can be reviewed and appropriate action taken.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: '14. Policy Changes and Complaints',
+                text:
+                    'We may update this policy for product, security, operational, or legal reasons. Material changes will be identified by a revised date and additional notice where required. You may contact us first with a concern and may also complain to the data-protection authority available under applicable law.',
               ),
             ],
           ),
@@ -453,17 +528,17 @@ class _DetailSection extends StatelessWidget {
           Text(
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF103B36),
-                ),
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF103B36),
+            ),
           ),
           const SizedBox(height: 10),
           Text(
             text,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF55656C),
-                  height: 1.5,
-                ),
+              color: const Color(0xFF55656C),
+              height: 1.5,
+            ),
           ),
         ],
       ),
@@ -505,9 +580,9 @@ class _LegalMetaCard extends StatelessWidget {
               Text(
                 'Last updated: $lastUpdated',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF103B36),
-                    ),
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF103B36),
+                ),
               ),
             ],
           ),
@@ -515,10 +590,10 @@ class _LegalMetaCard extends StatelessWidget {
           Text(
             summary,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF2C4B45),
-                  height: 1.45,
-                  fontWeight: FontWeight.w500,
-                ),
+              color: const Color(0xFF2C4B45),
+              height: 1.45,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
