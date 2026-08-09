@@ -53,18 +53,25 @@ class ProfileScreen extends StatelessWidget {
     );
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(10, 12, 10, 28),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: <Color>[Color(0xFFF1F3F6), Color(0xFFE3E7EC)],
+              colors: [Color(0xFFE8F2F0), Color(0xFFD6E6E3)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(color: const Color(0xFFD5DBE3)),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFC3D7D3)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A000000),
+                blurRadius: 16,
+                offset: Offset(0, 4),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -81,7 +88,7 @@ class ProfileScreen extends StatelessWidget {
                         Text(
                           user.fullName,
                           style: theme.textTheme.headlineSmall?.copyWith(
-                            color: const Color(0xFF1A2A31),
+                            color: const Color(0xFF103B36),
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -90,17 +97,30 @@ class ProfileScreen extends StatelessWidget {
                           Text(
                             user.shortBio,
                             style: theme.textTheme.bodyLarge?.copyWith(
-                              color: const Color(0xFF53626A),
+                              color: const Color(0xFF3B524E),
                               height: 1.45,
                             ),
                           ),
                         ],
                         const SizedBox(height: 10),
-                        Text(
-                          locationLabel,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF61726F),
-                          ),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.location_on_outlined,
+                              size: 16,
+                              color: Color(0xFF103B36),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                locationLabel,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: const Color(0xFF103B36),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -109,10 +129,8 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                alignment: WrapAlignment.center,
-                runAlignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   _ProfilePill(
                     icon: Icons.workspace_premium_rounded,
@@ -133,19 +151,18 @@ class ProfileScreen extends StatelessWidget {
                 value: user.availability,
                 onChanged: (_) => appState.toggleAvailability(),
                 contentPadding: EdgeInsets.zero,
-                activeThumbColor: Theme.of(context).colorScheme.primary,
-                activeTrackColor: Theme.of(
-                  context,
-                ).colorScheme.primary.withValues(alpha: 0.35),
-                inactiveTrackColor: const Color(0xFFD0D7DF),
+                activeTrackColor: const Color(0xFF103B36),
                 title: const Text(
                   'Helper availability',
-                  style: TextStyle(color: Color(0xFF1D3037)),
+                  style: TextStyle(
+                    color: Color(0xFF103B36),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 subtitle: Text(
                   availabilitySubtitle,
-                  style: TextStyle(
-                    color: const Color(0xFF53626A),
+                  style: const TextStyle(
+                    color: Color(0xFF53626A),
                     height: 1.35,
                   ),
                 ),
@@ -153,19 +170,24 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
             onPressed: () => _openEditProfileScreen(context, user),
             style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              backgroundColor: const Color(0xFF103B36),
+              foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(5),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
             icon: const Icon(Icons.edit_outlined),
-            label: const Text('Edit profile'),
+            label: const Text(
+              'Edit Profile',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -886,7 +908,7 @@ class _ProfileAvatar extends StatelessWidget {
         photoPath.startsWith('http://') || photoPath.startsWith('https://');
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(5),
+      borderRadius: BorderRadius.circular(16),
       child: SizedBox(
         width: size,
         height: size,
@@ -912,15 +934,15 @@ class _ProfileAvatar extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: const Color(0xFFE7F1EE),
-        borderRadius: BorderRadius.circular(5),
+        color: const Color(0xFF103B36),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Center(
         child: Text(
           initials,
           style: TextStyle(
-            color: const Color(0xFF103B36),
-            fontWeight: FontWeight.w700,
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
             fontSize: size * 0.4,
           ),
         ),
@@ -969,10 +991,10 @@ class _InfoRow extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: const Color(0xFFE7F0ED),
-            borderRadius: BorderRadius.circular(5),
+            color: const Color(0xFF103B36).withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, size: 20),
+          child: Icon(icon, size: 20, color: const Color(0xFF103B36)),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -983,6 +1005,7 @@ class _InfoRow extends StatelessWidget {
                 title,
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
+                  color: const Color(0xFF103B36),
                 ),
               ),
               const SizedBox(height: 4),
@@ -1004,7 +1027,7 @@ class _InfoRow extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(5),
+          borderRadius: BorderRadius.circular(10),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4.0),
             child: content,

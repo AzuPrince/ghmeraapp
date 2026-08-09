@@ -123,16 +123,16 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         child: Form(
           key: _formKey,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(10, 12, 10, 28),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             children: [
               if (!isEditing && !appState.canCreateRequest)
                 Container(
                   margin: const EdgeInsets.only(bottom: 18),
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF5E8),
-                    borderRadius: BorderRadius.circular(5),
-                    border: Border.all(color: const Color(0xFFF2C48A)),
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFFDBA74)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -455,13 +455,15 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(top: 10),
-                        padding: const EdgeInsets.all(14),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8EFE8),
-                          borderRadius: BorderRadius.circular(5),
+                          color: const Color(0xFFFFF7ED),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFFED7AA)),
                         ),
                         child: const Text(
                           'This request will receive stronger moderation, safer chat defaults, and session check-ins before full identity exposure.',
+                          style: TextStyle(height: 1.4, color: Color(0xFF7C2D12)),
                         ),
                       ),
                   ],
@@ -475,15 +477,18 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 icon: const Icon(Icons.volunteer_activism_rounded),
                 label: Text(
                   isEditing
-                      ? 'Save request changes'
+                      ? 'Save Request Changes'
                       : requestLocked
                       ? 'Help someone else or use an exempt request'
-                      : 'Submit request for matching',
+                      : 'Submit Request for Matching',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                 ),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 56),
+                  backgroundColor: const Color(0xFF103B36),
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(5),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
               ),

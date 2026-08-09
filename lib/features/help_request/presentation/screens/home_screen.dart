@@ -113,7 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             decoration: BoxDecoration(
                               color: Theme.of(context).colorScheme.tertiary,
-                              borderRadius: BorderRadius.circular(5),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
                               '${appState.hiddenMyRequestsCount}',
@@ -146,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             decoration: BoxDecoration(
                               color: Theme.of(context).colorScheme.tertiary,
-                              borderRadius: BorderRadius.circular(5),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
                               '${appState.unreadNotificationsCount}',
@@ -416,7 +416,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return showModalBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (sheetContext) {
         final helperFirstName = helper.fullName.trim().split(' ').first;
@@ -424,10 +424,11 @@ class _HomeScreenState extends State<HomeScreen> {
         return SafeArea(
           child: ListView(
             shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             children: [
+              const _SheetDragHandle(),
               Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
                 child: Text(
                   'Request help from ${helper.fullName}',
                   style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
@@ -436,7 +437,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
                 child: Text(
                   editableRequests.isEmpty
                       ? 'Create a new request and send it directly to $helperFirstName.'
@@ -506,18 +507,19 @@ class _HomeScreenState extends State<HomeScreen> {
         await showModalBottomSheet<_AcceptedRequestMenuAction>(
           context: context,
           shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
           ),
           builder: (sheetContext) {
             return SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const _SheetDragHandle(),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                      padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
                       child: Text(
                         request.title,
                         style: Theme.of(sheetContext).textTheme.titleMedium
@@ -698,7 +700,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (_) =>
           _HelpGiverRatingSheet(request: request, helpGiver: helpGiver),
@@ -765,18 +767,19 @@ class _HomeScreenState extends State<HomeScreen> {
         await showModalBottomSheet<_CommunityRequestMenuAction>(
           context: context,
           shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
           ),
           builder: (sheetContext) {
             return SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const _SheetDragHandle(),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                      padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
                       child: Text(
                         request.title,
                         style: Theme.of(sheetContext).textTheme.titleMedium
@@ -784,7 +787,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
                       child: Text(
                         'Actions for ${requester.fullName}',
                         style: Theme.of(sheetContext).textTheme.bodyMedium
@@ -859,18 +862,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final selectedAction = await showModalBottomSheet<_MyRequestMenuAction>(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const _SheetDragHandle(),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
                   child: Text(
                     request.title,
                     style: Theme.of(sheetContext).textTheme.titleMedium
@@ -878,7 +882,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
                   child: Text(
                     'Request actions',
                     style: Theme.of(sheetContext).textTheme.bodyMedium
@@ -975,7 +979,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (_) =>
           _AccountReportSheet(reportedUser: reportedUser, request: request),
@@ -997,7 +1001,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (_) =>
           _SafetyReportSheet(request: request, reportedUser: reportedUser),
@@ -1348,6 +1352,9 @@ class _RequestDetailsScreen extends StatelessWidget {
           await showModalBottomSheet<bool>(
             context: context,
             isScrollControlled: true,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            ),
             builder: (_) =>
                 _ReviewSubmissionSheet(request: request, reviewee: reviewee),
           ) ==
@@ -1374,7 +1381,7 @@ class _RequestDetailsScreen extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (_) =>
           _HelpGiverRatingSheet(request: request, helpGiver: helpGiver),
@@ -1389,6 +1396,9 @@ class _RequestDetailsScreen extends StatelessWidget {
     final submitted = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       builder: (_) =>
           _SafetyReportSheet(request: request, reportedUser: reportedUser),
     );
@@ -2794,7 +2804,7 @@ class _OverviewTab extends StatelessWidget {
       backgroundColor: Theme.of(context).colorScheme.surface,
       enableDrag: false,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) => DraggableScrollableSheet(
         expand: false,
@@ -2907,7 +2917,7 @@ class _RequestsTab extends StatelessWidget {
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(5),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                   ),
@@ -2926,7 +2936,7 @@ class _RequestsTab extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(5),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                   ),
@@ -2953,7 +2963,7 @@ class _RequestsTab extends StatelessWidget {
       backgroundColor: Theme.of(context).colorScheme.surface,
       enableDrag: false,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) => DraggableScrollableSheet(
         expand: false,
@@ -5191,20 +5201,27 @@ class _NotificationCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(14),
         child: Ink(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: notification.isRead
                 ? Colors.white
-                : color.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(5),
+                : color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: notification.isRead
                   ? const Color(0xFFE6ECEA)
                   : color.withValues(alpha: 0.30),
             ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A000000),
+                blurRadius: 12,
+                offset: Offset(0, 3),
+              ),
+            ],
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -5213,11 +5230,11 @@ class _NotificationCard extends StatelessWidget {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(5),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(_notificationIcon(notification.type), color: color),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -5228,7 +5245,10 @@ class _NotificationCard extends StatelessWidget {
                           child: Text(
                             notification.title,
                             style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF103B36),
+                                ),
                           ),
                         ),
                         Text(
@@ -5257,6 +5277,25 @@ class _NotificationCard extends StatelessWidget {
   }
 }
 
+class _SheetDragHandle extends StatelessWidget {
+  const _SheetDragHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.only(top: 8, bottom: 14),
+        width: 40,
+        height: 4.5,
+        decoration: BoxDecoration(
+          color: const Color(0xFFC4D1CF),
+          borderRadius: BorderRadius.circular(3),
+        ),
+      ),
+    );
+  }
+}
+
 class _MenuSheetActionTile extends StatelessWidget {
   const _MenuSheetActionTile({
     required this.icon,
@@ -5274,15 +5313,42 @@ class _MenuSheetActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = foregroundColor ?? const Color(0xFF103B36);
 
-    return ListTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-      onTap: onTap,
-      leading: Icon(icon, color: color),
-      title: Text(
-        label,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: color,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8EFEB)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 10,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        onTap: onTap,
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        title: Text(
+          label,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: color.withValues(alpha: 0.5),
+          size: 20,
         ),
       ),
     );
@@ -5302,12 +5368,13 @@ class _ReportCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(5),
-        boxShadow: const <BoxShadow>[
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE6ECEB)),
+        boxShadow: const [
           BoxShadow(
-            color: Color(0x10000000),
-            blurRadius: 20,
-            offset: Offset(0, 10),
+            color: Color(0x0A000000),
+            blurRadius: 16,
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -5321,6 +5388,7 @@ class _ReportCard extends StatelessWidget {
                   report.reason,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
+                    color: const Color(0xFF103B36),
                   ),
                 ),
               ),
@@ -5368,12 +5436,13 @@ class _AdminMetricCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(5),
-          boxShadow: const <BoxShadow>[
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE6ECEB)),
+          boxShadow: const [
             BoxShadow(
-              color: Color(0x10000000),
-              blurRadius: 18,
-              offset: Offset(0, 10),
+              color: Color(0x0A000000),
+              blurRadius: 16,
+              offset: Offset(0, 4),
             ),
           ],
         ),
@@ -5382,9 +5451,10 @@ class _AdminMetricCard extends StatelessWidget {
           children: [
             Text(
               value,
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF103B36),
+                  ),
             ),
             const SizedBox(height: 6),
             Text(
@@ -5419,10 +5489,10 @@ class _SafetyFeatureRow extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: const Color(0xFFE7F1EE),
-            borderRadius: BorderRadius.circular(5),
+            color: const Color(0xFF103B36).withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon),
+          child: Icon(icon, color: const Color(0xFF103B36)),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -5431,9 +5501,10 @@ class _SafetyFeatureRow extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF103B36),
+                    ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -5461,16 +5532,17 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: textColor ?? const Color(0xFF233532),
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
         ),
       ),
     );
@@ -5486,22 +5558,23 @@ class _HeroPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0x1FFFFFFF),
-        borderRadius: BorderRadius.circular(5),
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: Colors.white),
+          Icon(icon, size: 16, color: Colors.white),
           const SizedBox(width: 8),
           Text(
             label,
             style: const TextStyle(
               color: Colors.white,
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
             ),
           ),
         ],
@@ -5520,19 +5593,28 @@ class _EmptyStateCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6ECEB)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 16,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF103B36),
+                ),
           ),
           const SizedBox(height: 8),
           Text(

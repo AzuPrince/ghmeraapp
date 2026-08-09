@@ -30,7 +30,11 @@ class PrivacySessionControlsCard extends StatelessWidget {
         children: [
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Show approximate location first'),
+            activeTrackColor: const Color(0xFF103B36),
+            title: const Text(
+              'Show approximate location first',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
             subtitle: const Text('Use area-level location before acceptance.'),
             value: user.privacySettings.showApproximateLocation,
             onChanged: (value) {
@@ -41,7 +45,11 @@ class PrivacySessionControlsCard extends StatelessWidget {
           ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Share phone only after acceptance'),
+            activeTrackColor: const Color(0xFF103B36),
+            title: const Text(
+              'Share phone only after acceptance',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
             value: user.privacySettings.sharePhoneAfterAcceptance,
             onChanged: (value) {
               appState.updateCurrentUserPrivacySettings(
@@ -51,7 +59,11 @@ class PrivacySessionControlsCard extends StatelessWidget {
           ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Share email only after acceptance'),
+            activeTrackColor: const Color(0xFF103B36),
+            title: const Text(
+              'Share email only after acceptance',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
             value: user.privacySettings.shareEmailAfterAcceptance,
             onChanged: (value) {
               appState.updateCurrentUserPrivacySettings(
@@ -61,7 +73,11 @@ class PrivacySessionControlsCard extends StatelessWidget {
           ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Allow support circle invites'),
+            activeTrackColor: const Color(0xFF103B36),
+            title: const Text(
+              'Allow support circle invites',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
             value: user.privacySettings.allowSupportCircleInvites,
             onChanged: (value) {
               appState.updateCurrentUserPrivacySettings(
@@ -71,7 +87,11 @@ class PrivacySessionControlsCard extends StatelessWidget {
           ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Allow message requests'),
+            activeTrackColor: const Color(0xFF103B36),
+            title: const Text(
+              'Allow message requests',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
             value: user.privacySettings.allowMessageRequests,
             onChanged: (value) {
               appState.updateCurrentUserPrivacySettings(
@@ -79,14 +99,15 @@ class PrivacySessionControlsCard extends StatelessWidget {
               );
             },
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 12),
           if (user.sessions.isNotEmpty) ...[
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
                 'Select current device session',
                 style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF103B36),
                 ),
               ),
             ),
@@ -96,8 +117,9 @@ class PrivacySessionControlsCard extends StatelessWidget {
                 width: double.infinity,
                 margin: const EdgeInsets.only(top: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAF9),
-                  borderRadius: BorderRadius.circular(5),
+                  color: const Color(0xFFF6F8F8),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE4ECEB)),
                 ),
                 child: Column(
                   children: [
@@ -106,7 +128,8 @@ class PrivacySessionControlsCard extends StatelessWidget {
                       value: session.id,
                       // ignore: deprecated_member_use
                       groupValue: currentSessionId,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                      activeColor: const Color(0xFF103B36),
                       // ignore: deprecated_member_use
                       onChanged: (selectedSessionId) {
                         if (selectedSessionId == null) {
@@ -128,7 +151,10 @@ class PrivacySessionControlsCard extends StatelessWidget {
                           color: const Color(0xFF667572),
                         ),
                       ),
-                      secondary: const Icon(Icons.devices_rounded),
+                      secondary: const Icon(
+                        Icons.devices_rounded,
+                        color: Color(0xFF103B36),
+                      ),
                     ),
                     if (!session.isCurrent && user.sessions.length > 1)
                       Padding(
@@ -139,8 +165,11 @@ class PrivacySessionControlsCard extends StatelessWidget {
                             onPressed: () {
                               appState.removeSessionDevice(session.id);
                             },
-                            icon: const Icon(Icons.logout_rounded),
+                            icon: const Icon(Icons.logout_rounded, size: 16),
                             label: const Text('Sign out this device'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFFD32F2F),
+                            ),
                           ),
                         ),
                       ),
@@ -173,12 +202,13 @@ class _SectionCard extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(5),
-        boxShadow: const <BoxShadow>[
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6ECEB)),
+        boxShadow: const [
           BoxShadow(
-            color: Color(0x10000000),
-            blurRadius: 24,
-            offset: Offset(0, 12),
+            color: Color(0x0A000000),
+            blurRadius: 16,
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -189,6 +219,7 @@ class _SectionCard extends StatelessWidget {
             title,
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w800,
+              color: const Color(0xFF103B36),
             ),
           ),
           const SizedBox(height: 8),
