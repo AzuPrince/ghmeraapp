@@ -1082,6 +1082,18 @@ class GhmeraAppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void markNotificationUnread(String id) {
+    final index = _notifications.indexWhere(
+      (notification) => notification.id == id,
+    );
+    if (index == -1) {
+      return;
+    }
+
+    _notifications[index] = _notifications[index].copyWith(isRead: false);
+    notifyListeners();
+  }
+
   void markCurrentNotificationsRead() {
     var didChange = false;
 
@@ -1096,6 +1108,24 @@ class GhmeraAppState extends ChangeNotifier {
     }
 
     if (didChange) {
+      notifyListeners();
+    }
+  }
+
+  void deleteNotification(String id) {
+    final initialCount = _notifications.length;
+    _notifications.removeWhere((notification) => notification.id == id);
+    if (_notifications.length < initialCount) {
+      notifyListeners();
+    }
+  }
+
+  void clearAllCurrentNotifications() {
+    final initialCount = _notifications.length;
+    _notifications.removeWhere(
+      (notification) => notification.userId == _currentUserId,
+    );
+    if (_notifications.length < initialCount) {
       notifyListeners();
     }
   }

@@ -27,6 +27,8 @@ enum _AcceptedRequestMenuAction {
 
 enum _MessageAction { copy, reply, report, delete }
 
+enum _NotificationAction { markAsRead, markAsUnread, delete }
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -2875,33 +2877,192 @@ class _RatingDropdown extends StatelessWidget {
 class _NotificationsScreen extends StatelessWidget {
   const _NotificationsScreen();
 
+  Future<void> _confirmClearAllNotifications(
+    BuildContext context,
+    GhmeraAppState appState,
+  ) async {
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SheetDragHandle(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+                  child: Text(
+                    'Clear all notifications?',
+                    style: Theme.of(sheetContext).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF103B36),
+                        ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+                  child: Text(
+                    'This will remove all notifications from your list. This action cannot be undone.',
+                    style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF61726F),
+                        ),
+                  ),
+                ),
+                _MenuSheetActionTile(
+                  icon: Icons.delete_sweep_outlined,
+                  label: 'Clear all notifications',
+                  foregroundColor: const Color(0xFF9A2F2F),
+                  onTap: () => Navigator.of(sheetContext).pop(true),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirmed == true && context.mounted) {
+      appState.clearAllCurrentNotifications();
+      showGhmeraSnackBar(
+        context,
+        message: 'All notifications cleared.',
+        type: SnackBarType.success,
+      );
+    }
+  }
+
+  Future<void> _showNotificationActionsSheet(
+    BuildContext context,
+    GhmeraAppState appState,
+    NotificationEntity notification,
+  ) async {
+    final action = await showModalBottomSheet<_NotificationAction>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SheetDragHandle(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+                  child: Text(
+                    notification.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(sheetContext).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF103B36),
+                        ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                  child: Text(
+                    'Received ${_relativeTime(notification.createdAt)}',
+                    style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF61726F),
+                        ),
+                  ),
+                ),
+                if (!notification.isRead)
+                  _MenuSheetActionTile(
+                    icon: Icons.mark_email_read_outlined,
+                    label: 'Mark as read',
+                    onTap: () => Navigator.of(sheetContext)
+                        .pop(_NotificationAction.markAsRead),
+                  )
+                else
+                  _MenuSheetActionTile(
+                    icon: Icons.mark_email_unread_outlined,
+                    label: 'Mark as unread',
+                    onTap: () => Navigator.of(sheetContext)
+                        .pop(_NotificationAction.markAsUnread),
+                  ),
+                _MenuSheetActionTile(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Delete notification',
+                  foregroundColor: const Color(0xFF9A2F2F),
+                  onTap: () => Navigator.of(sheetContext)
+                      .pop(_NotificationAction.delete),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (action == null || !context.mounted) {
+      return;
+    }
+
+    switch (action) {
+      case _NotificationAction.markAsRead:
+        appState.markNotificationRead(notification.id);
+        return;
+      case _NotificationAction.markAsUnread:
+        appState.markNotificationUnread(notification.id);
+        return;
+      case _NotificationAction.delete:
+        appState.deleteNotification(notification.id);
+        showGhmeraSnackBar(
+          context,
+          message: 'Notification deleted.',
+          type: SnackBarType.success,
+        );
+        return;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        centerTitle: false,
-        leading: uniformBackButton(context),
-        title: uniformAppBarTitle(
-          context,
-          title: 'Notifications',
-          subtitle: 'Matches, safety alerts, and key reminders.',
-        ),
-      ),
-      body: SafeArea(
-        child: Consumer<GhmeraAppState>(
-          builder: (context, appState, _) {
-            final notifications = appState.currentNotifications;
+    return Consumer<GhmeraAppState>(
+      builder: (context, appState, _) {
+        final notifications = appState.currentNotifications;
 
-            return ListView(
+        return Scaffold(
+          appBar: AppBar(
+            automaticallyImplyLeading: false,
+            centerTitle: false,
+            leading: uniformBackButton(context),
+            title: uniformAppBarTitle(
+              context,
+              title: 'Notifications',
+              subtitle: 'Matches, safety alerts, and key reminders.',
+            ),
+            actions: [
+              if (notifications.isNotEmpty)
+                IconButton(
+                  tooltip: 'Clear all notifications',
+                  onPressed: () =>
+                      _confirmClearAllNotifications(context, appState),
+                  icon: const Icon(Icons.delete_sweep_outlined),
+                ),
+            ],
+          ),
+          body: SafeArea(
+            child: ListView(
               padding: const EdgeInsets.fromLTRB(10, 12, 10, 28),
               children: [
                 Text(
                   'Matches, messages, safety alerts, reciprocity warnings, and wellbeing reminders land here.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF61726F),
-                    height: 1.45,
-                  ),
+                        color: const Color(0xFF61726F),
+                        height: 1.45,
+                      ),
                 ),
                 const SizedBox(height: 18),
                 if (notifications.isEmpty)
@@ -2914,17 +3075,17 @@ class _NotificationsScreen extends StatelessWidget {
                   for (final notification in notifications)
                     _NotificationCard(
                       notification: notification,
-                      onTap: () {
-                        if (!notification.isRead) {
-                          appState.markNotificationRead(notification.id);
-                        }
-                      },
+                      onTap: () => _showNotificationActionsSheet(
+                        context,
+                        appState,
+                        notification,
+                      ),
                     ),
               ],
-            );
-          },
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
