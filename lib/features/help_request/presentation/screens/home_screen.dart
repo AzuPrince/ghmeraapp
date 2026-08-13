@@ -1,20 +1,18 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
+import '../../../../app/services/map_geocoding_service.dart';
 import '../../../../core/ui/app_snack_bar.dart';
 import '../../../../core/ui/uniform_app_bar.dart';
 import 'home_menu_screen.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
 import 'create_request_screen.dart';
-
-const LatLng _defaultMapCenter = LatLng(5.6037, -0.1870);
 
 enum _CommunityRequestMenuAction { removeFromView, reportAccount, blockAccount }
 
@@ -3618,12 +3616,14 @@ class _NeighborhoodHelpersMapSheetState
                 height: 320,
                 child: FlutterMap(
                   options: MapOptions(
-                    initialCenter: data.mapCenter!,
-                    initialZoom: data.helperMarkers.isEmpty
-                        ? 10.5
-                        : data.helperMarkers.length > 5
-                        ? 11.8
-                        : 12.8,
+                    initialCameraFit: CameraFit.coordinates(
+                      coordinates: <LatLng>[
+                        ?data.currentUserPoint,
+                        for (final marker in data.helperMarkers) marker.point,
+                      ],
+                      padding: const EdgeInsets.all(48),
+                      maxZoom: 13,
+                    ),
                   ),
                   children: [
                     TileLayer(
@@ -3712,11 +3712,13 @@ class _NeighborhoodHelpersMapSheetState
         continue;
       }
 
-      final approximatePoint = await _resolveApproximatePoint(
-        helper.area,
-        helper.city,
-        cache: cache,
-      );
+      final approximatePoint =
+          await _resolveApproximatePoint(
+            helper.area,
+            helper.city,
+            cache: cache,
+          ) ??
+          _approximatePointFromExactLocation(helper);
       if (approximatePoint == null) {
         continue;
       }
@@ -3753,8 +3755,7 @@ class _NeighborhoodHelpersMapSheetState
     return _NeighborhoodHelpersMapData(
       currentUserPoint: currentUserPoint,
       mapCenter:
-          currentUserPoint ??
-          (markers.isNotEmpty ? markers.first.point : _defaultMapCenter),
+          currentUserPoint ?? (markers.isNotEmpty ? markers.first.point : null),
       helperMarkers: markers,
     );
   }
@@ -3792,12 +3793,10 @@ class _NeighborhoodHelpersMapSheetState
     }
 
     try {
-      final locations = await locationFromAddress(query);
-      if (locations.isEmpty) {
+      final point = await MapGeocodingService.instance.resolveAddress(query);
+      if (point == null) {
         return null;
       }
-
-      final point = LatLng(locations.first.latitude, locations.first.longitude);
       cache[query] = point;
       return point;
     } catch (_) {
@@ -3855,7 +3854,7 @@ class _NeighborhoodHelpersMapData {
   final LatLng? mapCenter;
   final List<_NeighborhoodHelperMarkerData> helperMarkers;
 
-  bool get hasMap => mapCenter != null;
+  bool get hasMap => helperMarkers.isNotEmpty && mapCenter != null;
 }
 
 class _NeighborhoodHelperMarkerData {
@@ -4168,12 +4167,14 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
                 height: 320,
                 child: FlutterMap(
                   options: MapOptions(
-                    initialCenter: data.mapCenter!,
-                    initialZoom: data.requestMarkers.isEmpty
-                        ? 10.5
-                        : data.requestMarkers.length > 5
-                        ? 11.8
-                        : 12.8,
+                    initialCameraFit: CameraFit.coordinates(
+                      coordinates: <LatLng>[
+                        ?data.currentUserPoint,
+                        for (final marker in data.requestMarkers) marker.point,
+                      ],
+                      padding: const EdgeInsets.all(48),
+                      maxZoom: 13,
+                    ),
                   ),
                   children: [
                     TileLayer(
@@ -4273,10 +4274,11 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
           ? '$locationLabel, $requesterCity'
           : locationLabel;
 
-      final approximatePoint = await _resolvePointFromQuery(
-        geocodingQuery,
-        cache: cache,
-      );
+      final approximatePoint =
+          await _resolvePointFromQuery(geocodingQuery, cache: cache) ??
+          (entry.requester.privacySettings.showApproximateLocation
+              ? _approximatePointFromExactLocation(entry.requester)
+              : null);
       if (approximatePoint == null) {
         continue;
       }
@@ -4310,8 +4312,7 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
     return _RequestLocationsMapData(
       currentUserPoint: currentUserPoint,
       mapCenter:
-          currentUserPoint ??
-          (markers.isNotEmpty ? markers.first.point : _defaultMapCenter),
+          currentUserPoint ?? (markers.isNotEmpty ? markers.first.point : null),
       requestMarkers: markers,
     );
   }
@@ -4348,12 +4349,12 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
     }
 
     try {
-      final locations = await locationFromAddress(normalizedQuery);
-      if (locations.isEmpty) {
+      final point = await MapGeocodingService.instance.resolveAddress(
+        normalizedQuery,
+      );
+      if (point == null) {
         return null;
       }
-
-      final point = LatLng(locations.first.latitude, locations.first.longitude);
       cache[normalizedQuery] = point;
       return point;
     } catch (_) {
@@ -4407,7 +4408,7 @@ class _RequestLocationsMapData {
   final LatLng? mapCenter;
   final List<_RequestLocationMarkerData> requestMarkers;
 
-  bool get hasMap => mapCenter != null;
+  bool get hasMap => requestMarkers.isNotEmpty && mapCenter != null;
 }
 
 class _RequestLocationMarkerData {
@@ -4586,6 +4587,25 @@ String? _requestDistanceLabel(_RequestLocationMarkerData marker) {
   }
 
   return formattedDistance;
+}
+
+LatLng? _approximatePointFromExactLocation(UserEntity user) {
+  final latitude = user.exactLatitude;
+  final longitude = user.exactLongitude;
+  if (latitude == null ||
+      longitude == null ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180) {
+    return null;
+  }
+
+  const approximationScale = 100.0;
+  return LatLng(
+    (latitude * approximationScale).round() / approximationScale,
+    (longitude * approximationScale).round() / approximationScale,
+  );
 }
 
 String _buildLocationLabel(String area, String city) {
