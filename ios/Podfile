@@ -34,6 +34,10 @@ target 'Runner' do
   target 'RunnerTests' do
     inherit! :search_paths
   end
+
+  script_phase :name => 'Copy Pod dSYMs to Archive',
+               :script => 'if [ -n "${DWARF_DSYM_FOLDER_PATH}" ]; then find "${BUILT_PRODUCTS_DIR}" -name "*.dSYM" -exec cp -R {} "${DWARF_DSYM_FOLDER_PATH}/" \;; fi',
+               :execution_position => :after_compile
 end
 
 post_install do |installer|

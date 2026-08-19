@@ -208,6 +208,7 @@
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				415D663796CAF03274182D3B /* [CP] Embed Pods Frameworks */,
+				2CAF4B75F29A426F60954D22 /* [CP-User] Copy Pod dSYMs to Archive */,
 			);
 			buildRules = (
 			);
@@ -281,6 +282,16 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		2CAF4B75F29A426F60954D22 /* [CP-User] Copy Pod dSYMs to Archive */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			name = "[CP-User] Copy Pod dSYMs to Archive";
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ -n \"${DWARF_DSYM_FOLDER_PATH}\" ]; then find \"${BUILT_PRODUCTS_DIR}\" -name \"*.dSYM\" -exec cp -R {} \"${DWARF_DSYM_FOLDER_PATH}/\" \\;; fi";
+		};
 		3906FEC84FB3AB509C5C22E0 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
