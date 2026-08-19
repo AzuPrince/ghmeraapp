@@ -30,6 +30,10 @@
 	<false/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Ghmera uses your location to auto-fill your city and area for safer local matching.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Ghmera uses your location to auto-fill your city and area for safer local matching.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Ghmera uses your location to auto-fill your city and area for safer local matching.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

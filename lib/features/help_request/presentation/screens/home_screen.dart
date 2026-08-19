@@ -450,7 +450,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
                 child: Text(
                   editableRequests.isEmpty
-                      ? 'Create a new request and send it directly to $helperFirstName.'
+                      ? 'Create a new request and send it directly to. $helperFirstName.'
                       : 'Choose an existing request or create a new one for $helperFirstName.',
                   style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
                     color: const Color(0xFF61726F),
