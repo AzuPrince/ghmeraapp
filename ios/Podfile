@@ -36,7 +36,7 @@ target 'Runner' do
   end
 
   script_phase :name => 'Copy Pod dSYMs to Archive',
-               :script => 'if [ -n "${DWARF_DSYM_FOLDER_PATH}" ]; then find "${BUILT_PRODUCTS_DIR}" -name "*.dSYM" -exec cp -R {} "${DWARF_DSYM_FOLDER_PATH}/" \;; fi',
+               :script => 'if [ -n "${DWARF_DSYM_FOLDER_PATH}" ]; then find "${BUILT_PRODUCTS_DIR}" -name "*.dSYM" -exec cp -R {} "${DWARF_DSYM_FOLDER_PATH}/" \;; FRAMEWORKS_DIR="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}"; if [ -d "${FRAMEWORKS_DIR}" ]; then for fw in "${FRAMEWORKS_DIR}"/*.framework; do if [ -d "$fw" ]; then fw_name=$(basename "$fw" .framework); dsym_path="${DWARF_DSYM_FOLDER_PATH}/${fw_name}.framework.dSYM"; if [ ! -d "$dsym_path" ] && [ -f "$fw/$fw_name" ]; then dsymutil "$fw/$fw_name" -o "$dsym_path" 2>/dev/null || true; fi; fi; done; fi; fi',
                :execution_position => :after_compile
 end
 
