@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/ui/uniform_app_bar.dart';
 import '../../../../core/ui/app_snack_bar.dart';
 import '../../../help_request/presentation/screens/home_screen.dart';
+import '../../domain/constants/auth_messages.dart';
 import '../providers/auth_provider.dart';
 
 bool _isValidEmail(String value) {
@@ -52,11 +53,36 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
   }
 
   void _showError(Object error) {
-    final message = error is AuthException
+    final rawMessage = error is AuthException
         ? error.message
-        : error.toString().replaceFirst('Exception: ', '');
+        : error.toString();
+    final message = cleanAuthenticationErrorMessage(
+      rawMessage,
+      fallbackMessage: 'Something went wrong. Please try again.',
+    );
+    final canCreateAccount = message == invalidSignInCredentialsMessage;
 
-    showGhmeraSnackBar(context, message: message, type: SnackBarType.error);
+    showGhmeraSnackBar(
+      context,
+      message: message,
+      type: SnackBarType.error,
+      duration: canCreateAccount
+          ? const Duration(seconds: 6)
+          : const Duration(seconds: 4),
+      actionLabel: canCreateAccount ? 'Create account' : null,
+      onAction: canCreateAccount
+          ? () {
+              if (!mounted) return;
+              setState(() {
+                _isSignUpMode = true;
+                _signUpEmailController.text = _signInEmailController.text
+                    .trim()
+                    .toLowerCase();
+                _signUpConfirmPasswordController.clear();
+              });
+            }
+          : null,
+    );
   }
 
   void _showInfo(String message) {
@@ -293,7 +319,10 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
             SafeArea(
               child: Center(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 32,
+                  ),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 520),
                     child: Column(
@@ -328,7 +357,9 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
                                       boxShadow: !_isSignUpMode
                                           ? [
                                               BoxShadow(
-                                                color: Colors.black.withValues(alpha: 0.15),
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.15,
+                                                ),
                                                 blurRadius: 10,
                                                 offset: const Offset(0, 2),
                                               ),
@@ -337,7 +368,8 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
                                     ),
                                     alignment: Alignment.center,
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         Icon(
                                           Icons.lock_open_rounded,
@@ -379,7 +411,9 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
                                       boxShadow: _isSignUpMode
                                           ? [
                                               BoxShadow(
-                                                color: Colors.black.withValues(alpha: 0.15),
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.15,
+                                                ),
                                                 blurRadius: 10,
                                                 offset: const Offset(0, 2),
                                               ),
@@ -388,7 +422,8 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
                                     ),
                                     alignment: Alignment.center,
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         Icon(
                                           Icons.person_add_alt_1_rounded,
@@ -484,7 +519,10 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
                                     style: TextButton.styleFrom(
                                       foregroundColor: Colors.white70,
                                     ),
-                                    icon: const Icon(Icons.help_outline_rounded, size: 16),
+                                    icon: const Icon(
+                                      Icons.help_outline_rounded,
+                                      size: 16,
+                                    ),
                                     label: const Text('Forgot password?'),
                                   ),
                                 ),
@@ -516,7 +554,8 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
                                             ),
                                           )
                                         : Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
                                             children: const [
                                               Text(
                                                 'Sign In',
@@ -527,7 +566,10 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
                                                 ),
                                               ),
                                               SizedBox(width: 8),
-                                              Icon(Icons.arrow_forward_rounded, size: 18),
+                                              Icon(
+                                                Icons.arrow_forward_rounded,
+                                                size: 18,
+                                              ),
                                             ],
                                           ),
                                   ),
@@ -655,7 +697,8 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
                                             ),
                                           )
                                         : Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
                                             children: const [
                                               Text(
                                                 'Sign Up & Get Code',
@@ -666,7 +709,10 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
                                                 ),
                                               ),
                                               SizedBox(width: 8),
-                                              Icon(Icons.mark_email_read_outlined, size: 18),
+                                              Icon(
+                                                Icons.mark_email_read_outlined,
+                                                size: 18,
+                                              ),
                                             ],
                                           ),
                                   ),
@@ -691,7 +737,9 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF26A69A).withValues(alpha: 0.2),
+                                  color: const Color(
+                                    0xFF26A69A,
+                                  ).withValues(alpha: 0.2),
                                   shape: BoxShape.circle,
                                 ),
                                 child: const Icon(

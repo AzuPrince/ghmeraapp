@@ -9,6 +9,42 @@ import main
 
 
 class AuthEmailCodeTests(unittest.TestCase):
+    @patch("main.admin_auth.create_custom_token")
+    def test_custom_sign_in_token_is_returned_as_text(self, create_token_mock):
+        create_token_mock.return_value = b"signed-token"
+
+        self.assertEqual(
+            main._create_custom_sign_in_token("user-1"),
+            "signed-token",
+        )
+        create_token_mock.assert_called_once_with("user-1")
+
+    @patch("main.admin_auth.create_custom_token")
+    def test_custom_sign_in_token_failure_has_actionable_message(
+        self,
+        create_token_mock,
+    ):
+        create_token_mock.side_effect = RuntimeError("signBlob denied")
+
+        with (
+            patch.object(main.logger, "exception") as log_exception,
+            self.assertRaises(https_fn.HttpsError) as raised,
+        ):
+            main._create_custom_sign_in_token("user-1")
+
+        log_exception.assert_called_once()
+        self.assertEqual(
+            raised.exception.code,
+            https_fn.FunctionsErrorCode.INTERNAL,
+        )
+        self.assertEqual(
+            raised.exception.message,
+            (
+                "Your account was created, but automatic sign in could not be "
+                "completed. Please sign in with your email and password."
+            ),
+        )
+
     def test_email_validation_normalizes_valid_address(self):
         self.assertEqual(
             main._require_email_value("  User@Example.COM  "),

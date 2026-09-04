@@ -8,7 +8,13 @@ void showGhmeraSnackBar(
   IconData? icon,
   SnackBarType type = SnackBarType.info,
   Duration duration = const Duration(seconds: 4),
+  String? actionLabel,
+  VoidCallback? onAction,
 }) {
+  assert(
+    (actionLabel == null) == (onAction == null),
+    'actionLabel and onAction must be provided together.',
+  );
   Color backgroundColor;
   IconData displayIcon;
 
@@ -56,6 +62,13 @@ void showGhmeraSnackBar(
       elevation: 6,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      action: actionLabel != null && onAction != null
+          ? SnackBarAction(
+              label: actionLabel,
+              textColor: Colors.white,
+              onPressed: onAction,
+            )
+          : null,
     ),
   );
 }
