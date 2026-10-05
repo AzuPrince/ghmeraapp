@@ -5,8 +5,10 @@ import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
 import '../../../../core/ui/app_snack_bar.dart';
 import 'blocked_accounts_screen.dart';
+import '../../../auth/domain/constants/auth_messages.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
+import '../widgets/account_deletion_button.dart';
 import '../widgets/privacy_session_controls_card.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -21,9 +23,43 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _deleteAccount(BuildContext context) async {
+    final appState = context.read<GhmeraAppState>();
+    final authProvider = context.read<AuthProvider>();
+    await appState.prepareForAccountDeletion();
+
+    try {
+      await authProvider.deleteAccount();
+      appState.completeAccountDeletion();
+      if (!context.mounted) {
+        return;
+      }
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    } catch (error) {
+      appState.cancelAccountDeletion();
+      if (!context.mounted) {
+        return;
+      }
+
+      final message = error is AuthException
+          ? error.message
+          : cleanAuthenticationErrorMessage(
+              error.toString(),
+              fallbackMessage:
+                  'We could not delete your account. Please try again.',
+            );
+      showGhmeraSnackBar(context, message: message, type: SnackBarType.error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<GhmeraAppState>();
+    final authProvider = context.watch<AuthProvider>();
     final user = appState.currentUser;
     final theme = Theme.of(context);
     final trustFlags = appState.currentUserTrustFlags;
@@ -446,6 +482,11 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
           ),
+        ),
+        const SizedBox(height: 12),
+        AccountDeletionButton(
+          isLoading: authProvider.isLoading,
+          onDeleteConfirmed: () => _deleteAccount(context),
         ),
       ],
     );

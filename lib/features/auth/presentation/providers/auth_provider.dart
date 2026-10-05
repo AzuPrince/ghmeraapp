@@ -203,6 +203,29 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> deleteAccount() async {
+    await _ensureOnline();
+    final auth = _requireFirebaseAuth();
+    if (auth.currentUser == null) {
+      throw const AuthException(
+        'Your session has ended. Please sign in again before deleting your account.',
+      );
+    }
+
+    _setLoading();
+    try {
+      await _callAuthFunction(
+        'delete_account',
+        const <String, dynamic>{},
+        fallbackMessage: 'We could not delete your account. Please try again.',
+      );
+      await auth.signOut();
+      _isSignedIn = false;
+    } finally {
+      _clearLoading();
+    }
+  }
+
   @override
   void dispose() {
     _authSubscription?.cancel();

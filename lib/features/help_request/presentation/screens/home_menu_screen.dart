@@ -519,7 +519,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
               _DetailSection(
                 title: '13. Exercising Privacy Rights',
                 text:
-                    'Send a request to info@peatechservice.com and describe the right you want to exercise. We may verify your identity by matching account information or asking you to confirm control of your email. An authorized agent may act where law permits, subject to proof of authority and identity verification. We will respond within the period required by applicable law. If we deny an appealable request, reply with “Privacy Appeal” and explain why you believe the decision should be reconsidered.',
+                    'You can permanently delete your Ghmera account directly in the app from Profile → Delete account. This removes your login credentials and associated profile, help request, message, review, wellbeing, and session data. You may also send another privacy request to info@peatechservice.com and describe the right you want to exercise. We may verify your identity by matching account information or asking you to confirm control of your email. An authorized agent may act where law permits, subject to proof of authority and identity verification. We will respond within the period required by applicable law. If we deny an appealable request, reply with “Privacy Appeal” and explain why you believe the decision should be reconsidered.',
               ),
               SizedBox(height: 12),
               _DetailSection(

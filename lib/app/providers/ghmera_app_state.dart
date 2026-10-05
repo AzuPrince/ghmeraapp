@@ -66,6 +66,7 @@ class GhmeraAppState extends ChangeNotifier {
   StreamSubscription<Position>? _locationPositionSubscription;
   String _currentUserId;
   bool _isHydratingRemoteState = false;
+  bool _accountDeletionInProgress = false;
   Map<String, dynamic>? _pendingLocalDatabase;
 
   List<UserEntity> get _users => _database.users;
@@ -1625,6 +1626,17 @@ class GhmeraAppState extends ChangeNotifier {
     User? authUser, {
     bool notifyListenersAfter = true,
   }) {
+    if (_accountDeletionInProgress) {
+      if (authUser == null) {
+        return;
+      }
+
+      _accountDeletionInProgress = false;
+      _isHydratingRemoteState = true;
+      unawaited(_restoreAppStateFromFirestore());
+      return;
+    }
+
     var didChange = false;
 
     if (authUser != null) {
@@ -1685,8 +1697,31 @@ class GhmeraAppState extends ChangeNotifier {
   @override
   void notifyListeners() {
     _syncDerivedUserMetrics();
-    _persistAppState();
+    if (!_accountDeletionInProgress) {
+      _persistAppState();
+    }
     super.notifyListeners();
+  }
+
+  Future<void> prepareForAccountDeletion() async {
+    _accountDeletionInProgress = true;
+    _pendingLocalDatabase = null;
+    await _remoteDatabaseSubscription?.cancel();
+    _remoteDatabaseSubscription = null;
+  }
+
+  void cancelAccountDeletion() {
+    if (!_accountDeletionInProgress) {
+      return;
+    }
+    _accountDeletionInProgress = false;
+    _startFirestoreLiveSync();
+  }
+
+  void completeAccountDeletion() {
+    _pendingLocalDatabase = null;
+    _database.clear();
+    _currentUserId = _defaultCurrentUserId;
   }
 
   void _syncDerivedUserMetrics() {
