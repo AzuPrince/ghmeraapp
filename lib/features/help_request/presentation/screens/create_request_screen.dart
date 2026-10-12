@@ -195,6 +195,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<RequestCategory>(
+                      isExpanded: true,
                       initialValue: _category,
                       decoration: const InputDecoration(labelText: 'Category'),
                       items: RequestCategory.values

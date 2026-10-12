@@ -51,11 +51,12 @@ void main() {
       'Need help setting up my router',
     );
 
-    final submitButton = find.widgetWithText(
-      FilledButton,
-      'Submit Request for Matching',
+    final submitButton = find.text('Submit Request for Matching');
+    await tester.scrollUntilVisible(
+      submitButton,
+      500,
+      scrollable: find.byType(Scrollable).first,
     );
-    await tester.ensureVisible(submitButton);
     await tester.pumpAndSettle();
 
     final scrollable = tester.state<ScrollableState>(
