@@ -52,3 +52,5 @@ functions/.env.*
 !functions/.env.example
 functions/.secret.local
 Ghmera_unsigned.ipa
+.firebase/
+Untitled/

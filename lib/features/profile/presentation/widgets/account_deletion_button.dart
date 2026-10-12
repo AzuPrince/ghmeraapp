@@ -59,7 +59,9 @@ class AccountDeletionButton extends StatelessWidget {
           foregroundColor: const Color(0xFFC62828),
           side: const BorderSide(color: Color(0xFFC62828)),
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
       ),
     );

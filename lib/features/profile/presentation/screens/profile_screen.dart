@@ -4,12 +4,16 @@ import 'package:provider/provider.dart';
 import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
 import '../../../../core/ui/app_snack_bar.dart';
+import '../../../../core/ui/ghmera_components.dart';
+import '../../../../core/ui/uniform_app_bar.dart';
+import '../../../credits/presentation/widgets/credit_wallet_card.dart';
 import 'blocked_accounts_screen.dart';
 import '../../../auth/domain/constants/auth_messages.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../widgets/account_deletion_button.dart';
 import '../widgets/privacy_session_controls_card.dart';
+import '../../../../core/ui/ghmera_theme.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -63,6 +67,8 @@ class ProfileScreen extends StatelessWidget {
     final user = appState.currentUser;
     final theme = Theme.of(context);
     final trustFlags = appState.currentUserTrustFlags;
+    final credits = appState.currentUserCredits;
+    final stats = appState.helpStatsForUser(user.id);
     final reportsAboutUser = appState.reportsAboutCurrentUser;
     final activeReports = reportsAboutUser
         .where(
@@ -87,35 +93,24 @@ class ProfileScreen extends StatelessWidget {
       user: user,
       isCurrentlyAvailable: isCurrentlyAvailable,
     );
+    final reviews = appState.reviewsAboutCurrentUser;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
       children: [
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFE8F2F0), Color(0xFFD6E6E3)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFC3D7D3)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x0A000000),
-                blurRadius: 16,
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
+        GhCard(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _ProfileAvatar(user: user, radius: 34),
+                  GhAvatar(
+                    name: user.fullName,
+                    photo: user.profilePhoto,
+                    size: 68,
+                    showVerified: user.idVerified || user.trustedHelper,
+                  ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
@@ -123,325 +118,195 @@ class ProfileScreen extends StatelessWidget {
                       children: [
                         Text(
                           user.fullName,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color: const Color(0xFF103B36),
-                            fontWeight: FontWeight.w800,
-                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.headlineSmall,
                         ),
-                        if (showBio) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            user.shortBio,
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              color: const Color(0xFF3B524E),
-                              height: 1.45,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.location_on_outlined,
-                              size: 16,
-                              color: Color(0xFF103B36),
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                locationLabel,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: const Color(0xFF103B36),
-                                  fontWeight: FontWeight.w600,
+                        if (locationLabel.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.place_outlined,
+                                size: 16,
+                                color: GhColors.inkSoft,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  locationLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: GhColors.inkSoft,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _ProfilePill(
-                    icon: Icons.workspace_premium_rounded,
-                    label: 'Trust ${user.trustScore.toStringAsFixed(0)}',
-                  ),
-                  _ProfilePill(
-                    icon: Icons.sync_alt_rounded,
-                    label: 'Balance ${user.helpBalance}',
-                  ),
-                  _ProfilePill(
-                    icon: Icons.notifications_active_outlined,
-                    label: '${appState.unreadNotificationsCount} unread alerts',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              SwitchListTile.adaptive(
-                value: user.availability,
-                onChanged: (_) => appState.toggleAvailability(),
-                contentPadding: EdgeInsets.zero,
-                activeTrackColor: const Color(0xFF103B36),
-                title: const Text(
-                  'Helper availability',
-                  style: TextStyle(
-                    color: Color(0xFF103B36),
-                    fontWeight: FontWeight.w700,
+              if (showBio) ...[
+                const SizedBox(height: 12),
+                Text(
+                  user.shortBio,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: GhColors.inkSoft,
                   ),
                 ),
-                subtitle: Text(
-                  availabilitySubtitle,
-                  style: const TextStyle(
-                    color: Color(0xFF53626A),
-                    height: 1.35,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: () => _openEditProfileScreen(context, user),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              backgroundColor: const Color(0xFF103B36),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            icon: const Icon(Icons.edit_outlined),
-            label: const Text(
-              'Edit Profile',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _SectionCard(
-          title: 'Impact and reciprocity',
-          subtitle:
-              'The platform stays fair by encouraging every user to both receive and give help over time.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+              ],
+              const SizedBox(height: 18),
               Row(
                 children: [
-                  Expanded(
-                    child: _MetricTile(
-                      label: 'Help given',
-                      value: '${user.helpGivenCount}',
-                    ),
+                  _HeaderStat(
+                    value: '${credits.spendable}',
+                    label: 'Credits',
+                    color: GhColors.creditDeep,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _MetricTile(
-                      label: 'Help received',
-                      value: '${user.helpReceivedCount}',
-                    ),
+                  _HeaderStat(
+                    value: '${stats.helpsGiven}',
+                    label: 'Helped',
+                    color: GhColors.brand,
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _MetricTile(
-                      label: 'Average review',
-                      value: user.averageRating.toStringAsFixed(1),
-                    ),
+                  _HeaderStat(
+                    value: '${stats.helpsReceived}',
+                    label: 'Received',
+                    color: GhColors.sky,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _MetricTile(
-                      label: 'Completed help',
-                      value: '${user.completedHelpCount}',
-                    ),
+                  _HeaderStat(
+                    value: stats.reviewCount == 0
+                        ? '–'
+                        : stats.averageRating.toStringAsFixed(1),
+                    label: 'Rating',
+                    color: GhColors.ink,
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              Text(
-                appState.reciprocityMessage,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  height: 1.45,
-                  color: const Color(0xFF4F5F5C),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _openEditProfileScreen(context, user),
+                  icon: const Icon(Icons.edit_outlined, size: 20),
+                  label: const Text('Edit profile'),
                 ),
               ),
-              if (appState.hasReciprocityActivity) ...[
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: appState.reciprocityProgress,
-                    minHeight: 3,
-                    backgroundColor: const Color(0xFFE7EFEC),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Reciprocity value ${appState.reciprocityPercent}% of the current fairness window.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF667572),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
         const SizedBox(height: 16),
-        const PrivacySessionControlsCard(),
+        CreditWalletCard(summary: credits, message: appState.creditMessage),
+        const SizedBox(height: 16),
+        GhCard(
+          padding: const EdgeInsets.fromLTRB(16, 6, 10, 6),
+          child: SwitchListTile.adaptive(
+            value: user.availability,
+            onChanged: (_) => appState.toggleAvailability(),
+            contentPadding: EdgeInsets.zero,
+            activeTrackColor: GhColors.brand,
+            secondary: GhIconBadge(
+              icon: user.availability
+                  ? Icons.volunteer_activism_rounded
+                  : Icons.pause_circle_outline_rounded,
+              color: user.availability ? GhColors.brand : GhColors.inkSoft,
+              size: 42,
+            ),
+            title: Text('Available to help', style: theme.textTheme.titleSmall),
+            subtitle: Text(
+              availabilitySubtitle,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ),
         const SizedBox(height: 16),
         _SectionCard(
-          title: 'Reviews and safety signals',
+          title: 'Trust and safety',
           subtitle:
-              'Community feedback reinforces helpfulness, respect, safety, reliability, and accuracy.',
+              'Ratings, verified details, and safety signals help people decide to work with you.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Expanded(
-                    child: _MetricTile(
-                      label: 'Active reports',
-                      value: '${appState.activeSafetyReportsAboutCurrentUser}',
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _MetricTile(
-                      label: 'Flagged reviews',
-                      value: '${appState.suspiciousReviewsAboutCurrentUser}',
+                  Text('Trust score', style: theme.textTheme.titleSmall),
+                  const Spacer(),
+                  Text(
+                    '${user.trustScore.toStringAsFixed(0)} / 100',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: GhColors.brand,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              if (trustFlags.isNotEmpty) ...[
-                Text(
-                  'Live trust signals',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: (user.trustScore / 100).clamp(0.0, 1.0),
+                  minHeight: 8,
                 ),
-                const SizedBox(height: 10),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: GhStatTile(
+                      value: '${appState.activeSafetyReportsAboutCurrentUser}',
+                      label: 'Active reports',
+                      icon: Icons.flag_outlined,
+                      color: GhColors.coral,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GhStatTile(
+                      value: '${appState.suspiciousReviewsAboutCurrentUser}',
+                      label: 'Flagged reviews',
+                      icon: Icons.rate_review_outlined,
+                      color: GhColors.amber,
+                    ),
+                  ),
+                ],
+              ),
+              if (trustFlags.isNotEmpty) ...[
+                const SizedBox(height: 16),
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: 6,
+                  runSpacing: 6,
                   children: trustFlags
-                      .map((flag) => Chip(label: Text(flag)))
+                      .map(
+                        (flag) => GhTag(
+                          icon: Icons.verified_outlined,
+                          label: flag,
+                          foreground: GhColors.brandDark,
+                          background: GhColors.brandSoft,
+                        ),
+                      )
                       .toList(),
                 ),
-                const SizedBox(height: 14),
               ],
-              if (activeReports.isNotEmpty)
+              if (activeReports.isNotEmpty) ...[
+                const SizedBox(height: 16),
                 for (final report in activeReports.take(3))
-                  Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF7F3EB),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          report.reason,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          report.details.trim().isEmpty
-                              ? report.status.label
-                              : '${report.status.label}: ${report.details}',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF586965),
-                            height: 1.45,
-                          ),
-                        ),
-                      ],
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: GhInfoBanner(
+                      icon: Icons.flag_outlined,
+                      foreground: GhColors.coral,
+                      background: GhColors.coralSoft,
+                      title: report.reason,
+                      message: report.details.trim().isEmpty
+                          ? report.status.label
+                          : '${report.status.label}: ${report.details}',
                     ),
                   ),
-              for (final review in appState.reviewsAboutCurrentUser)
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF7F3EB),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              appState.userById(review.reviewerId).fullName,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            review.rating.toStringAsFixed(1),
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        review.feedback,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          height: 1.45,
-                          color: const Color(0xFF586965),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          Chip(label: Text('Helpful ${review.helpfulness}/5')),
-                          Chip(
-                            label: Text('Respect ${review.respectfulness}/5'),
-                          ),
-                          Chip(label: Text('Safety ${review.safety}/5')),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              if (appState.reviewsAboutCurrentUser.isEmpty &&
-                  activeReports.isEmpty &&
-                  trustFlags.isEmpty)
-                Text(
-                  'No reviews or safety signals have been recorded for this account yet.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF586965),
-                    height: 1.45,
-                  ),
-                ),
-              if (appState.reviewsAboutCurrentUser.isNotEmpty ||
-                  activeReports.isNotEmpty ||
-                  trustFlags.isNotEmpty)
-                const SizedBox(height: 4),
+              ],
+              const SizedBox(height: 12),
+              const Divider(),
               _InfoRow(
                 icon: Icons.block_rounded,
                 title: '${user.blockedUserIds.length} blocked account(s)',
@@ -458,10 +323,26 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: 'Reviews',
+          subtitle: reviews.isEmpty
+              ? 'Reviews from people you help or who help you appear here.'
+              : '${reviews.length} ${reviews.length == 1 ? 'review' : 'reviews'} from the community.',
+          child: reviews.isEmpty
+              ? const _ReviewsEmpty()
+              : Column(
+                  children: [
+                    for (final review in reviews) _ReviewTile(review: review),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 16),
+        const PrivacySessionControlsCard(),
+        const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
-          child: FilledButton.icon(
+          child: OutlinedButton.icon(
             onPressed: () async {
               await context.read<AuthProvider>().signOut();
               if (!context.mounted) {
@@ -475,12 +356,6 @@ class ProfileScreen extends StatelessWidget {
             },
             icon: const Icon(Icons.logout_rounded),
             label: const Text('Sign out'),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(5),
-              ),
-            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -690,115 +565,179 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit profile')),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        centerTitle: false,
+        titleSpacing: 0,
+        leading: uniformBackButton(context),
+        title: uniformAppBarTitle(context, title: 'Edit profile'),
+      ),
       body: SafeArea(
+        top: false,
         child: Form(
           key: _formKey,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
             children: [
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Full name'),
-                validator: (value) {
-                  if ((value ?? '').trim().isEmpty) {
-                    return 'Enter your full name.';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _bioController,
-                decoration: const InputDecoration(labelText: 'Short bio'),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _availabilityTimeController,
-                readOnly: true,
-                onTap: _selectAvailabilityWindow,
-                decoration: InputDecoration(
-                  labelText: 'Available time',
-                  hintText: 'Tap to set helper matching time range',
-                  suffixIcon: _hasAvailabilityWindow
-                      ? IconButton(
-                          tooltip: 'Clear available time',
-                          onPressed: _clearAvailabilityWindow,
-                          icon: const Icon(Icons.clear_rounded),
-                        )
-                      : const Icon(Icons.schedule_rounded),
+              Center(
+                child: GhAvatar(
+                  name: _nameController.text.trim().isEmpty
+                      ? widget.user.fullName
+                      : _nameController.text,
+                  photo: _photoController.text,
+                  size: 84,
                 ),
               ),
-              if (_hasAvailabilityWindow) ...[
-                const SizedBox(height: 6),
-                Text(
-                  'Helper availability will automatically follow this time every day.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF586965),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 10),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                value: _usesDeviceLocation,
-                onChanged: _setUsesDeviceLocation,
-                title: const Text('Always use my location'),
-                subtitle: Text(
-                  _usesDeviceLocation
-                      ? 'Your road, town, state, and country will keep following your device location.'
-                      : 'Turn this off to enter a custom road, town, state, and country manually.',
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _areaController,
-                enabled: !_usesDeviceLocation,
-                decoration: const InputDecoration(labelText: 'Road'),
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _cityController,
-                enabled: !_usesDeviceLocation,
-                decoration: const InputDecoration(
-                  labelText: 'Town, state, country',
-                ),
-              ),
-              if (_usesDeviceLocation) ...[
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: _useDeviceLocation,
-                    icon: const Icon(Icons.my_location_rounded),
-                    label: const Text('Refresh device location'),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _phoneController,
-                decoration: const InputDecoration(labelText: 'Phone'),
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _photoController,
-                decoration: const InputDecoration(
-                  labelText: 'Profile photo URL or asset path',
+              const SizedBox(height: 18),
+              _SectionCard(
+                title: 'About you',
+                subtitle: 'Shown to people you help and people who help you.',
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: _nameController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(labelText: 'Full name'),
+                      onChanged: (_) => setState(() {}),
+                      validator: (value) {
+                        if ((value ?? '').trim().isEmpty) {
+                          return 'Enter your full name.';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _bioController,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        labelText: 'Short bio',
+                        hintText: 'What kind of help do you enjoy giving?',
+                      ),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _photoController,
+                      decoration: const InputDecoration(
+                        labelText: 'Profile photo URL',
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _saveProfile,
-                  icon: const Icon(Icons.save_rounded),
-                  label: const Text('Save profile'),
+              _SectionCard(
+                title: 'Availability',
+                subtitle: 'Helpers are only matched during these hours.',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextFormField(
+                      controller: _availabilityTimeController,
+                      readOnly: true,
+                      onTap: _selectAvailabilityWindow,
+                      decoration: InputDecoration(
+                        labelText: 'Available time',
+                        hintText: 'Tap to set a daily time range',
+                        suffixIcon: _hasAvailabilityWindow
+                            ? IconButton(
+                                tooltip: 'Clear available time',
+                                onPressed: _clearAvailabilityWindow,
+                                icon: const Icon(Icons.clear_rounded),
+                              )
+                            : const Icon(Icons.schedule_rounded),
+                      ),
+                    ),
+                    if (_hasAvailabilityWindow) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Your availability follows this window every day.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: 'Location and contact',
+                subtitle:
+                    'Only your approximate area is shown until you agree to share more.',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      value: _usesDeviceLocation,
+                      onChanged: _setUsesDeviceLocation,
+                      title: Text(
+                        'Always use my location',
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      subtitle: Text(
+                        _usesDeviceLocation
+                            ? 'Your road, town, state, and country follow your device location.'
+                            : 'Turn this on to fill your location from the device.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _areaController,
+                      enabled: !_usesDeviceLocation,
+                      decoration: const InputDecoration(labelText: 'Road'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _cityController,
+                      enabled: !_usesDeviceLocation,
+                      decoration: const InputDecoration(
+                        labelText: 'Town, state, country',
+                      ),
+                    ),
+                    if (_usesDeviceLocation) ...[
+                      const SizedBox(height: 10),
+                      TextButton.icon(
+                        onPressed: _applyingDeviceLocation
+                            ? null
+                            : _useDeviceLocation,
+                        icon: const Icon(Icons.my_location_rounded, size: 18),
+                        label: Text(
+                          _applyingDeviceLocation
+                              ? 'Reading location...'
+                              : 'Refresh device location',
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _phoneController,
+                      decoration: const InputDecoration(labelText: 'Phone'),
+                      keyboardType: TextInputType.phone,
+                    ),
+                  ],
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: DecoratedBox(
+        decoration: const BoxDecoration(
+          color: GhColors.surface,
+          border: Border(top: BorderSide(color: GhColors.line)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: FilledButton.icon(
+              onPressed: _saveProfile,
+              icon: const Icon(Icons.check_rounded),
+              label: const Text('Save profile'),
+            ),
           ),
         ),
       ),
@@ -821,37 +760,19 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(5),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x10000000),
-            blurRadius: 24,
-            offset: Offset(0, 12),
-          ),
-        ],
-      ),
+    return GhCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 8),
+          Text(title, style: theme.textTheme.titleLarge),
+          const SizedBox(height: 4),
           Text(
             subtitle,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF61726F),
-              height: 1.45,
+              color: GhColors.inkSoft,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           child,
         ],
       ),
@@ -859,153 +780,117 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-class _MetricTile extends StatelessWidget {
-  const _MetricTile({required this.label, required this.value});
+class _HeaderStat extends StatelessWidget {
+  const _HeaderStat({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
 
-  final String label;
   final String value;
+  final String label;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: theme.textTheme.titleLarge?.copyWith(color: color),
+          ),
+          Text(label, style: theme.textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+}
 
+class _ReviewsEmpty extends StatelessWidget {
+  const _ReviewsEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const GhIconBadge(
+          icon: Icons.star_outline_rounded,
+          color: GhColors.credit,
+          size: 40,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            'No reviews yet. Complete a help exchange to receive your first rating.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: GhColors.inkSoft),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReviewTile extends StatelessWidget {
+  const _ReviewTile({required this.review});
+
+  final ReviewEntity review;
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.read<GhmeraAppState>();
+    final theme = Theme.of(context);
+    final reviewer = appState.userById(review.reviewerId);
     return Container(
-      padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F1E8),
-        borderRadius: BorderRadius.circular(5),
+        color: GhColors.field,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            value,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF697774),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfilePill extends StatelessWidget {
-  const _ProfilePill({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-      decoration: BoxDecoration(
-        color: const Color(0xFFDCE2E9),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: const Color(0xFF1D3037)),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF1D3037),
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({required this.user, this.radius = 34});
-
-  final UserEntity user;
-  final double radius;
-
-  @override
-  Widget build(BuildContext context) {
-    final photoPath = user.profilePhoto?.trim();
-    final size = radius * 2;
-    final initials = _initialsForName(user.fullName);
-    if (photoPath == null || photoPath.isEmpty) {
-      return _fallbackAvatar(initials, size);
-    }
-
-    final isNetworkPhoto =
-        photoPath.startsWith('http://') || photoPath.startsWith('https://');
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: isNetworkPhoto
-            ? Image.network(
-                photoPath,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    _fallbackAvatar(initials, size),
-              )
-            : Image.asset(
-                photoPath,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    _fallbackAvatar(initials, size),
+          Row(
+            children: [
+              GhAvatar(
+                name: reviewer.fullName,
+                photo: reviewer.profilePhoto,
+                size: 32,
               ),
-      ),
-    );
-  }
-
-  Widget _fallbackAvatar(String initials, double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: const Color(0xFF103B36),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Center(
-        child: Text(
-          initials,
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: size * 0.4,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  reviewer.fullName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              GhRatingStars(rating: review.rating, size: 15),
+            ],
           ),
-        ),
+          if (review.feedback.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              review.feedback,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: GhColors.inkSoft,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            'Helpful ${review.helpfulness}/5 · Respect ${review.respectfulness}/5 · Safety ${review.safety}/5',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
       ),
     );
-  }
-
-  String _initialsForName(String fullName) {
-    final parts = fullName
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList();
-
-    if (parts.isEmpty) {
-      return '?';
-    }
-
-    final first = parts.first.characters.first.toUpperCase();
-    final second = parts.length > 1
-        ? parts[1].characters.first.toUpperCase()
-        : '';
-    return '$first$second';
   }
 }
 
@@ -1026,58 +911,31 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    Widget content = Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF103B36).withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, size: 20, color: const Color(0xFF103B36)),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF103B36),
-                ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            GhIconBadge(icon: icon, color: GhColors.inkSoft, size: 40),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: theme.textTheme.bodySmall),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF667572),
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
+            ),
+            if (onTap != null)
+              const Icon(Icons.chevron_right_rounded, color: GhColors.inkFaint),
+          ],
         ),
-      ],
+      ),
     );
-
-    if (onTap != null) {
-      content = Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4.0),
-            child: content,
-          ),
-        ),
-      );
-    }
-
-    return content;
   }
 }
 

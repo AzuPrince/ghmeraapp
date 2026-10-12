@@ -262,6 +262,7 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
         backgroundColor: const Color(0xFF081F1C),
         appBar: AppBar(
           backgroundColor: const Color(0xFF081F1C),
+          systemOverlayStyle: SystemUiOverlayStyle.light,
           elevation: 0,
           scrolledUnderElevation: 0,
           automaticallyImplyLeading: false,
