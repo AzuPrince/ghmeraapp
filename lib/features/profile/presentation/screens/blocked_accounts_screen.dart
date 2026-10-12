@@ -31,9 +31,6 @@ class BlockedAccountsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
         automaticallyImplyLeading: false,
         centerTitle: false,
         leading: uniformBackButton(context),

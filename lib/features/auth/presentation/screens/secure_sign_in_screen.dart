@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../core/ui/ghmera_theme.dart';
 import '../../../../core/ui/uniform_app_bar.dart';
 import '../../../../core/ui/app_snack_bar.dart';
 import '../../../help_request/presentation/screens/home_screen.dart';
@@ -260,11 +261,9 @@ class _SecureSignInScreenState extends State<SecureSignInScreen> {
       ),
       child: Scaffold(
         backgroundColor: const Color(0xFF081F1C),
+        extendBodyBehindAppBar: true,
         appBar: AppBar(
-          backgroundColor: const Color(0xFF081F1C),
-          systemOverlayStyle: SystemUiOverlayStyle.light,
-          elevation: 0,
-          scrolledUnderElevation: 0,
+          systemOverlayStyle: ghDarkPageOverlayStyle,
           automaticallyImplyLeading: false,
           centerTitle: false,
           leading: Navigator.of(context).canPop()

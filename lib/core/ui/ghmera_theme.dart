@@ -57,6 +57,14 @@ const LinearGradient ghCanvasGradient = LinearGradient(
   end: Alignment.bottomCenter,
 );
 
+// The status bar colour must be set explicitly: when it is null, Android
+// before 15 keeps a translucent black scrim over the strip above the app bar.
+final SystemUiOverlayStyle ghLightPageOverlayStyle = SystemUiOverlayStyle.dark
+    .copyWith(statusBarColor: Colors.transparent);
+
+final SystemUiOverlayStyle ghDarkPageOverlayStyle = SystemUiOverlayStyle.light
+    .copyWith(statusBarColor: Colors.transparent);
+
 ThemeData buildGhmeraTheme() {
   final colorScheme =
       ColorScheme.fromSeed(
@@ -140,7 +148,7 @@ ThemeData buildGhmeraTheme() {
       elevation: 0,
       foregroundColor: GhColors.ink,
       titleSpacing: 16,
-      systemOverlayStyle: SystemUiOverlayStyle.dark,
+      systemOverlayStyle: ghLightPageOverlayStyle,
       titleTextStyle: textTheme.titleLarge,
     ),
     cardTheme: CardThemeData(

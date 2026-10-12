@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../core/ui/ghmera_theme.dart';
 import '../../../help_request/presentation/screens/home_menu_screen.dart';
 import 'secure_sign_in_screen.dart';
 
@@ -12,7 +13,7 @@ class LoginScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: ghDarkPageOverlayStyle,
       child: Scaffold(
         backgroundColor: const Color(0xFF081F1C),
         body: Stack(

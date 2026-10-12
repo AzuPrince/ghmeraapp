@@ -158,7 +158,7 @@ class _LaunchSequenceScreenState extends State<_LaunchSequenceScreen> {
     }
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: ghDarkPageOverlayStyle,
       child: Scaffold(
         backgroundColor: const Color(0xFF081F1C),
         body: Center(
