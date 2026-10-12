@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
 import '../../../../core/ui/app_snack_bar.dart';
+import '../../../../core/ui/uniform_app_bar.dart';
 import 'blocked_accounts_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
@@ -649,7 +650,11 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit profile')),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leading: uniformBackButton(context),
+        title: const Text('Edit profile'),
+      ),
       body: SafeArea(
         child: Form(
           key: _formKey,
