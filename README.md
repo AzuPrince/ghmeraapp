@@ -71,3 +71,32 @@ You can also override the function region if needed:
 ```bash
 flutter run --dart-define=GHMERA_FUNCTIONS_REGION=<region>
 ```
+
+## App Store Connect (iOS)
+
+Bundle ID: `com.peatech.ghmera`  
+Display name: **Ghmera**  
+Apple team: `5FA87UK5LY`
+
+### Build and upload
+
+1. Bump the build number in `pubspec.yaml` (the `+` suffix must be higher than the last build uploaded to App Store Connect).
+2. Build the IPA:
+
+```bash
+./scripts/ios_app_store_release.sh
+```
+
+3. Upload `build/ios/ipa/*.ipa` with [Transporter](https://apps.apple.com/us/app/transporter/id1450874784) or Xcode Organizer.
+
+### After upload
+
+In [App Store Connect](https://appstoreconnect.apple.com/):
+
+1. Open the **Ghmera** app (create it with bundle ID `com.peatech.ghmera` if it does not exist).
+2. Attach the new build under **TestFlight** or **App Store** → version **1.0.1**.
+3. Complete **App Privacy**, screenshots, description, support URL, and review notes.
+4. Enable **Sign in with Apple** if the capability is required (entitlements already include it).
+5. Submit for review.
+
+Export compliance: `ITSAppUsesNonExemptEncryption` is `false` in `ios/Runner/Info.plist` (standard encryption only).

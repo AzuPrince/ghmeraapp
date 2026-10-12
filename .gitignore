@@ -52,10 +52,11 @@ functions/.env.*
 !functions/.env.example
 functions/.secret.local
 Ghmera_unsigned.ipa
+.firebase/
+Untitled/
 
 # Android Signing Keys & Credentials
 *.jks
 *.keystore
 key.properties
 android/key.properties
-

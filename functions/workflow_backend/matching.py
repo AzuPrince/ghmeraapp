@@ -10,10 +10,10 @@ from .constants import (
     HELPER_BROADCAST_LIMIT,
     HIGH_RISK_CATEGORIES,
     MINUTES_PER_DAY,
-    RECIPROCITY_FLOOR,
     RELATED_CATEGORIES,
     REQUESTER_SUGGESTION_LIMIT,
 )
+from .credits import REQUEST_CREDIT_COST, help_credit_summary
 from .utils import (
     _copy_string_list,
     _first_name,
@@ -25,21 +25,25 @@ from .utils import (
 
 
 class WorkflowMatchingMixin:
-    def can_create_request(self) -> bool:
+    def can_create_request(self, *, ignoring_request_id: str = '') -> bool:
         current_user = self.current_user()
         if self.can_bypass_reciprocity(current_user):
             return True
-        return self.help_balance(current_user) >= RECIPROCITY_FLOOR
+        requests = [
+            request
+            for request in self.requests
+            if not ignoring_request_id or request.get('id') != ignoring_request_id
+        ]
+        summary = help_credit_summary(self.current_user_id, requests)
+        return summary['available'] >= REQUEST_CREDIT_COST
+
+    def help_credits_for(self, user_id: str) -> dict[str, int]:
+        return help_credit_summary(user_id, self.requests)
 
     def can_bypass_reciprocity(self, user: dict[str, Any]) -> bool:
         return bool(user.get('vulnerableUser')) or bool(
             user.get('hasDisability')
         ) or bool(user.get('adminOverrideReciprocity'))
-
-    def help_balance(self, user: dict[str, Any]) -> int:
-        return _read_int(user.get('helpGivenCount')) - _read_int(
-            user.get('helpReceivedCount')
-        )
 
     def is_current_user_participant_for_request(
         self, request: dict[str, Any]

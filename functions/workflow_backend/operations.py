@@ -3,9 +3,27 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from .constants import HELPER_BROADCAST_LIMIT, REQUESTER_SUGGESTION_LIMIT
+from .constants import (
+    ASK_CREDIT_COST,
+    CREDIT_FREE_CATEGORIES,
+    HELP_EARNED_CREDITS,
+    HELPER_BROADCAST_LIMIT,
+    RECEIVE_CREDIT_COST,
+    REQUESTER_SUGGESTION_LIMIT,
+)
+from .credits import REQUEST_CREDIT_COST, is_credit_free_request
 from .errors import WorkflowError
 from .utils import _clamp_int, _copy_string_list, _first_name, _now_iso
+
+NOT_ENOUGH_CREDITS_MESSAGE = (
+    f'You need at least {REQUEST_CREDIT_COST} help credits to post a request: '
+    f'{ASK_CREDIT_COST} for asking and {RECEIVE_CREDIT_COST} for receiving help. '
+    'Help someone in the community to earn more credits.'
+)
+
+
+def _credit_word(amount: int) -> str:
+    return 'help credit' if amount == 1 else 'help credits'
 
 
 class WorkflowOperationsMixin:
@@ -13,12 +31,8 @@ class WorkflowOperationsMixin:
         current_user = self.current_user()
         category = str(payload.get('category', '')).strip()
         emergency_override = bool(payload.get('emergencyOverride', False))
-        exempt_request = emergency_override or category == 'emergencySupport'
-        if not self.can_create_request() and not exempt_request:
-            raise WorkflowError(
-                'This account is on a reciprocity hold and cannot create a standard request right now.',
-                status_code=409,
-            )
+        if category not in CREDIT_FREE_CATEGORIES and not self.can_create_request():
+            raise WorkflowError(NOT_ENOUGH_CREDITS_MESSAGE, status_code=409)
 
         now = _now_iso()
         request_id = self.next_id('request', self.requests)
@@ -140,6 +154,13 @@ class WorkflowOperationsMixin:
                 'emergencyOverride': bool(payload.get('emergencyOverride', False)),
             }
         )
+        if (
+            is_credit_free_request(request)
+            and not is_credit_free_request(updated_request)
+            and not self.is_closed_request(request)
+            and not self.can_create_request(ignoring_request_id=request_id)
+        ):
+            raise WorkflowError(NOT_ENOUGH_CREDITS_MESSAGE, status_code=409)
         updated_request['safetyCheckInRequired'] = self.is_high_risk_request(
             updated_request
         )
@@ -615,14 +636,28 @@ class WorkflowOperationsMixin:
 
         helper_id = str(request.get('acceptedHelperId') or '').strip()
         if fully_completed and helper_id:
+            requester_id = str(request.get('requesterId', '')).strip()
+            title = request.get('title', 'This request')
+            credit_free = is_credit_free_request(request)
+            requester_credits = self.help_credits_for(requester_id)
+            helper_credits = self.help_credits_for(helper_id)
+            requester_message = (
+                f'{title} was closed after both participants confirmed completion.'
+            )
+            if not credit_free:
+                requester_message += (
+                    f' {REQUEST_CREDIT_COST} help credits were used: '
+                    f'{ASK_CREDIT_COST} for asking and {RECEIVE_CREDIT_COST} for receiving help. '
+                    f"You have {requester_credits['available']} available."
+                )
             self.notifications.insert(
                 0,
                 {
                     'id': self.next_id('notification', self.notifications),
-                    'userId': request.get('requesterId'),
+                    'userId': requester_id,
                     'type': 'helpCompleted',
                     'title': 'Request completed',
-                    'message': f"{request.get('title', 'This request')} was closed after both participants confirmed completion.",
+                    'message': requester_message,
                     'createdAt': now,
                     'isRead': False,
                 },
@@ -633,12 +668,37 @@ class WorkflowOperationsMixin:
                     'id': self.next_id('notification', self.notifications),
                     'userId': helper_id,
                     'type': 'helpCompleted',
-                    'title': 'Help completed',
-                    'message': f"{request.get('title', 'This request')} was closed after both participants confirmed completion.",
+                    'title': f'You earned {HELP_EARNED_CREDITS} {_credit_word(HELP_EARNED_CREDITS)}',
+                    'message': f'Thanks for helping with {title}. '
+                    f"You now have {helper_credits['available']} credits to use when you need help.",
                     'createdAt': now,
                     'isRead': False,
                 },
             )
+            updated_request['actionLog'].append(
+                {
+                    'actorId': helper_id,
+                    'action': f'Helper earned {HELP_EARNED_CREDITS} {_credit_word(HELP_EARNED_CREDITS)}',
+                    'createdAt': now,
+                }
+            )
+            if not credit_free:
+                updated_request['actionLog'].extend(
+                    [
+                        {
+                            'actorId': requester_id,
+                            'action': f'Requester used {ASK_CREDIT_COST} '
+                            f'{_credit_word(ASK_CREDIT_COST)} for asking',
+                            'createdAt': now,
+                        },
+                        {
+                            'actorId': requester_id,
+                            'action': f'Requester used {RECEIVE_CREDIT_COST} '
+                            f'{_credit_word(RECEIVE_CREDIT_COST)} for receiving help',
+                            'createdAt': now,
+                        },
+                    ]
+                )
         return {'confirmed': True, 'requestId': request_id}
 
     def submit_review_for_request(

@@ -1,18 +1,16 @@
 import 'package:flutter/material.dart';
 
-const double _uniformBackIconSize = 22;
-const double _uniformBackIconWeight = 700;
-const Color _uniformHeadingColor = Color(0xFF132B27);
+import 'ghmera_theme.dart';
 
 TextStyle uniformHeadingTextStyle(BuildContext context, {Color? color}) {
   return Theme.of(context).textTheme.titleLarge?.copyWith(
-        fontWeight: FontWeight.w900,
-        color: color ?? _uniformHeadingColor,
+        fontWeight: FontWeight.w800,
+        color: color ?? GhColors.ink,
       ) ??
       TextStyle(
         fontSize: 22,
-        fontWeight: FontWeight.w900,
-        color: color ?? _uniformHeadingColor,
+        fontWeight: FontWeight.w800,
+        color: color ?? GhColors.ink,
       );
 }
 
@@ -25,11 +23,12 @@ Widget uniformAppBarTitle(
   bool isDarkBackground = false,
 }) {
   final effectiveTitleColor =
-      titleColor ?? (isDarkBackground ? Colors.white : _uniformHeadingColor);
-  final effectiveSubtitleColor = subtitleColor ??
+      titleColor ?? (isDarkBackground ? Colors.white : GhColors.ink);
+  final effectiveSubtitleColor =
+      subtitleColor ??
       (isDarkBackground
           ? Colors.white.withValues(alpha: 0.8)
-          : const Color(0xFF596865));
+          : GhColors.inkSoft);
 
   final trimmedSubtitle = subtitle?.trim();
   if (trimmedSubtitle == null || trimmedSubtitle.isEmpty) {
@@ -45,13 +44,17 @@ Widget uniformAppBarTitle(
     children: [
       Text(
         title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: uniformHeadingTextStyle(context, color: effectiveTitleColor),
       ),
       Text(
         trimmedSubtitle,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: effectiveSubtitleColor,
-            ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: effectiveSubtitleColor),
       ),
     ],
   );
@@ -67,9 +70,8 @@ IconButton uniformBackButton(
     onPressed: onPressed ?? () => Navigator.of(context).maybePop(),
     icon: Icon(
       Icons.arrow_back_ios_new_rounded,
-      size: _uniformBackIconSize,
-      weight: _uniformBackIconWeight,
-      color: color ?? (isDarkBackground ? Colors.white : null),
+      size: 20,
+      color: color ?? (isDarkBackground ? Colors.white : GhColors.ink),
     ),
     tooltip: 'Back',
   );

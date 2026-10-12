@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/providers/ghmera_app_state.dart';
+import '../../../../core/ui/ghmera_theme.dart';
 
 class PrivacySessionControlsCard extends StatelessWidget {
   const PrivacySessionControlsCard({super.key});
@@ -30,7 +31,7 @@ class PrivacySessionControlsCard extends StatelessWidget {
         children: [
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            activeTrackColor: const Color(0xFF103B36),
+            activeTrackColor: GhColors.brandDark,
             title: const Text(
               'Show approximate location first',
               style: TextStyle(fontWeight: FontWeight.w600),
@@ -45,7 +46,7 @@ class PrivacySessionControlsCard extends StatelessWidget {
           ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            activeTrackColor: const Color(0xFF103B36),
+            activeTrackColor: GhColors.brandDark,
             title: const Text(
               'Share phone only after acceptance',
               style: TextStyle(fontWeight: FontWeight.w600),
@@ -59,7 +60,7 @@ class PrivacySessionControlsCard extends StatelessWidget {
           ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            activeTrackColor: const Color(0xFF103B36),
+            activeTrackColor: GhColors.brandDark,
             title: const Text(
               'Share email only after acceptance',
               style: TextStyle(fontWeight: FontWeight.w600),
@@ -73,7 +74,7 @@ class PrivacySessionControlsCard extends StatelessWidget {
           ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            activeTrackColor: const Color(0xFF103B36),
+            activeTrackColor: GhColors.brandDark,
             title: const Text(
               'Allow support circle invites',
               style: TextStyle(fontWeight: FontWeight.w600),
@@ -87,7 +88,7 @@ class PrivacySessionControlsCard extends StatelessWidget {
           ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            activeTrackColor: const Color(0xFF103B36),
+            activeTrackColor: GhColors.brandDark,
             title: const Text(
               'Allow message requests',
               style: TextStyle(fontWeight: FontWeight.w600),
@@ -107,7 +108,7 @@ class PrivacySessionControlsCard extends StatelessWidget {
                 'Select current device session',
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: const Color(0xFF103B36),
+                  color: GhColors.brandDark,
                 ),
               ),
             ),
@@ -117,7 +118,7 @@ class PrivacySessionControlsCard extends StatelessWidget {
                 width: double.infinity,
                 margin: const EdgeInsets.only(top: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF6F8F8),
+                  color: Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: const Color(0xFFE4ECEB)),
                 ),
@@ -128,8 +129,10 @@ class PrivacySessionControlsCard extends StatelessWidget {
                       value: session.id,
                       // ignore: deprecated_member_use
                       groupValue: currentSessionId,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                      activeColor: const Color(0xFF103B36),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                      ),
+                      activeColor: GhColors.brandDark,
                       // ignore: deprecated_member_use
                       onChanged: (selectedSessionId) {
                         if (selectedSessionId == null) {
@@ -148,12 +151,12 @@ class PrivacySessionControlsCard extends StatelessWidget {
                             ? 'Current device'
                             : 'Last active ${_relativeTime(session.lastActive)}',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF667572),
+                          color: GhColors.inkSoft,
                         ),
                       ),
                       secondary: const Icon(
                         Icons.devices_rounded,
-                        color: Color(0xFF103B36),
+                        color: GhColors.brandDark,
                       ),
                     ),
                     if (!session.isCurrent && user.sessions.length > 1)
@@ -219,14 +222,14 @@ class _SectionCard extends StatelessWidget {
             title,
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF103B36),
+              color: GhColors.brandDark,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             subtitle,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF61726F),
+              color: GhColors.inkSoft,
               height: 1.45,
             ),
           ),

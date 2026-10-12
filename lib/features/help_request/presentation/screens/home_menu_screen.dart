@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/ui/uniform_app_bar.dart';
+import '../../../credits/presentation/widgets/help_credits_sheet.dart';
+import '../../../../core/ui/ghmera_theme.dart';
 
 class HomeMenuScreen extends StatelessWidget {
   const HomeMenuScreen({super.key});
@@ -8,6 +10,14 @@ class HomeMenuScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final menuItems = <_MenuItem>[
+      _MenuItem(
+        icon: Icons.toll_rounded,
+        title: 'How help credits work',
+        subtitle:
+            'Start with 5. Asking uses 1, receiving help uses 1, helping earns 1.',
+        builder: (_) => const SizedBox.shrink(),
+        onOpen: showHelpCreditsSheet,
+      ),
       _MenuItem(
         icon: Icons.info_outline_rounded,
         title: 'About Ghmera',
@@ -29,7 +39,7 @@ class HomeMenuScreen extends StatelessWidget {
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F8),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -63,7 +73,7 @@ class HomeMenuScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: const BoxDecoration(
-                      color: Color(0xFF103B36),
+                      color: GhColors.brandDark,
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -77,7 +87,7 @@ class HomeMenuScreen extends StatelessWidget {
                     child: Text(
                       'Use this menu to review important legal information, terms of service, and privacy standards.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF103B36),
+                        color: GhColors.brandDark,
                         height: 1.45,
                         fontWeight: FontWeight.w600,
                       ),
@@ -91,6 +101,11 @@ class HomeMenuScreen extends StatelessWidget {
               _MenuTile(
                 item: item,
                 onTap: () {
+                  final onOpen = item.onOpen;
+                  if (onOpen != null) {
+                    onOpen(context);
+                    return;
+                  }
                   Navigator.of(
                     context,
                   ).push<void>(MaterialPageRoute<void>(builder: item.builder));
@@ -109,12 +124,14 @@ class _MenuItem {
     required this.title,
     required this.subtitle,
     required this.builder,
+    this.onOpen,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final WidgetBuilder builder;
+  final Future<void> Function(BuildContext context)? onOpen;
 }
 
 class _MenuTile extends StatelessWidget {
@@ -150,16 +167,16 @@ class _MenuTile extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: const Color(0xFF103B36).withValues(alpha: 0.08),
+            color: GhColors.brandDark.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(item.icon, color: const Color(0xFF103B36), size: 22),
+          child: Icon(item.icon, color: GhColors.brandDark, size: 22),
         ),
         title: Text(
           item.title,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF103B36),
+            color: GhColors.brandDark,
           ),
         ),
         subtitle: Padding(
@@ -174,7 +191,7 @@ class _MenuTile extends StatelessWidget {
         ),
         trailing: const Icon(
           Icons.chevron_right_rounded,
-          color: Color(0xFF103B36),
+          color: GhColors.brandDark,
         ),
       ),
     );
@@ -187,7 +204,7 @@ class AboutGhmeraScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F8),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -228,6 +245,12 @@ class AboutGhmeraScreen extends StatelessWidget {
                 title: 'How matching works',
                 text:
                     'Matching considers the requested category, urgency, approximate location, availability, service radius, trust signals, reciprocity, blocks, and safety requirements. A suggestion is not a guarantee, endorsement, employment relationship, or professional background check.',
+              ),
+              SizedBox(height: 12),
+              _DetailSection(
+                title: 'Help credits',
+                text:
+                    'Every member starts with 5 help credits. Asking and receiving are charged separately: 1 credit for asking and 1 for receiving help. You need 2 available to post a request, and both stay on hold while it is open. Both are used once both people confirm the help is done, and both are returned if the request is deleted or canceled first. Completing help for someone else earns 1 credit. Emergency non-medical support requests never use credits. Credits have no cash value and cannot be bought, sold, or transferred.',
               ),
               SizedBox(height: 12),
               _DetailSection(
@@ -273,7 +296,7 @@ class TermsOfUseScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F8),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -419,7 +442,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F8),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -519,7 +542,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
               _DetailSection(
                 title: '13. Exercising Privacy Rights',
                 text:
-                    'Send a request to info@peatechservice.com and describe the right you want to exercise. We may verify your identity by matching account information or asking you to confirm control of your email. An authorized agent may act where law permits, subject to proof of authority and identity verification. We will respond within the period required by applicable law. If we deny an appealable request, reply with “Privacy Appeal” and explain why you believe the decision should be reconsidered.',
+                    'You can permanently delete your Ghmera account directly in the app from Profile → Delete account. This removes your login credentials and associated profile, help request, message, review, wellbeing, and session data. You may also send another privacy request to info@peatechservice.com and describe the right you want to exercise. We may verify your identity by matching account information or asking you to confirm control of your email. An authorized agent may act where law permits, subject to proof of authority and identity verification. We will respond within the period required by applicable law. If we deny an appealable request, reply with “Privacy Appeal” and explain why you believe the decision should be reconsidered.',
               ),
               SizedBox(height: 12),
               _DetailSection(
@@ -583,7 +606,7 @@ class _DetailSection extends StatelessWidget {
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF103B36),
+              color: GhColors.brandDark,
             ),
           ),
           const SizedBox(height: 10),
@@ -628,14 +651,14 @@ class _LegalMetaCard extends StatelessWidget {
               const Icon(
                 Icons.calendar_today_rounded,
                 size: 16,
-                color: Color(0xFF103B36),
+                color: GhColors.brandDark,
               ),
               const SizedBox(width: 8),
               Text(
                 'Last updated: $lastUpdated',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: const Color(0xFF103B36),
+                  color: GhColors.brandDark,
                 ),
               ),
             ],

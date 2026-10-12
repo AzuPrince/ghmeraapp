@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'ghmera_theme.dart';
+
 enum SnackBarType { info, success, error, warning }
 
 void showGhmeraSnackBar(
@@ -20,19 +22,19 @@ void showGhmeraSnackBar(
 
   switch (type) {
     case SnackBarType.success:
-      backgroundColor = const Color(0xFF0F6B5C);
+      backgroundColor = GhColors.brand;
       displayIcon = icon ?? Icons.check_circle_outline_rounded;
       break;
     case SnackBarType.error:
-      backgroundColor = const Color(0xFFE76F51);
+      backgroundColor = GhColors.coral;
       displayIcon = icon ?? Icons.error_outline_rounded;
       break;
     case SnackBarType.warning:
-      backgroundColor = const Color(0xFFF4A261);
+      backgroundColor = GhColors.amber;
       displayIcon = icon ?? Icons.warning_amber_rounded;
       break;
     case SnackBarType.info:
-      backgroundColor = const Color(0xFF163C38);
+      backgroundColor = GhColors.ink;
       displayIcon = icon ?? Icons.info_outline_rounded;
       break;
   }
@@ -61,7 +63,7 @@ void showGhmeraSnackBar(
       behavior: SnackBarBehavior.floating,
       elevation: 6,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       action: actionLabel != null && onAction != null
           ? SnackBarAction(
               label: actionLabel,

@@ -4,9 +4,10 @@ import 'package:provider/provider.dart';
 
 import 'package:ghmera_app/app/models/ghmera_models.dart';
 import 'package:ghmera_app/app/providers/ghmera_app_state.dart';
+import 'package:ghmera_app/app/services/help_credits.dart';
 import 'package:ghmera_app/features/help_request/presentation/screens/create_request_screen.dart';
 
-class _FakeGhmeraAppState implements GhmeraAppState {
+class _FakeGhmeraAppState extends ChangeNotifier implements GhmeraAppState {
   @override
   UserEntity get currentUser => const UserEntity(
     id: 'test-user',
@@ -15,6 +16,10 @@ class _FakeGhmeraAppState implements GhmeraAppState {
     city: 'Accra',
     area: 'East Legon',
   );
+
+  @override
+  HelpCreditSummary get currentUserCredits =>
+      const HelpCreditSummary(earned: 0, spent: 0, held: 0);
 
   @override
   bool get canCreateRequest => true;
@@ -47,38 +52,31 @@ void main() {
     await tester.pump();
 
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Request title'),
+      find.widgetWithText(TextFormField, 'Short title'),
       'Need help setting up my router',
-    );
-
-    final submitButton = find.text('Submit Request for Matching');
-    await tester.scrollUntilVisible(
-      submitButton,
-      500,
-      scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
 
     final scrollable = tester.state<ScrollableState>(
       find.byType(Scrollable).first,
     );
+    scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+    await tester.pumpAndSettle();
     final positionBeforeSubmit = scrollable.position.pixels;
+    expect(positionBeforeSubmit, greaterThan(0));
 
-    await tester.tap(submitButton);
+    await tester.tap(
+      find.text('Post request · uses $requestCreditCost credits'),
+    );
     await tester.pumpAndSettle();
 
     expect(
-      find.text(
-        'Add enough detail for a trusted helper to understand the request.',
-      ),
+      find.text('Add a little more detail so helpers understand the request.'),
       findsOneWidget,
     );
     expect(scrollable.position.pixels, lessThan(positionBeforeSubmit));
 
-    final descriptionField = find.widgetWithText(
-      TextFormField,
-      'Detailed description',
-    );
+    final descriptionField = find.widgetWithText(TextFormField, 'Details');
     expect(tester.getBottomLeft(descriptionField).dy, lessThan(700));
   });
 }

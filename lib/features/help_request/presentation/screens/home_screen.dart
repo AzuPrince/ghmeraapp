@@ -1,15 +1,22 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
+import '../../../../app/services/help_credits.dart';
 import '../../../../app/services/map_geocoding_service.dart';
 import '../../../../core/ui/app_snack_bar.dart';
+import '../../../../core/ui/ghmera_components.dart';
+import '../../../../core/ui/ghmera_theme.dart';
 import '../../../../core/ui/uniform_app_bar.dart';
+import '../../../credits/presentation/widgets/credit_wallet_card.dart';
+import '../../../credits/presentation/widgets/help_credits_sheet.dart';
 import 'home_menu_screen.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
 import 'create_request_screen.dart';
@@ -17,6 +24,7 @@ import 'create_request_screen.dart';
 enum _CommunityRequestMenuAction { removeFromView, reportAccount, blockAccount }
 
 enum _MyRequestMenuAction {
+  viewDetails,
   editThisRequest,
   hideThisRequest,
   deleteThisRequest,
@@ -51,9 +59,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int _currentIndex = _giveHelpTabIndex;
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showCreditsIntroOnce();
+    });
+  }
+
+  Future<void> _showCreditsIntroOnce() async {
+    final userId = context.read<GhmeraAppState>().currentUserId;
+    final key = 'ghmera_credits_intro_seen_$userId';
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted || (preferences.getBool(key) ?? false)) {
+      return;
+    }
+    await preferences.setBool(key, true);
+    if (!mounted) {
+      return;
+    }
+    await showCreditsWelcomeSheet(context);
+  }
+
   static const List<String> _titles = <String>[
-    'Give Help',
-    'Receive Help',
+    'Give help',
+    'Receive help',
     'Messages',
     'Safety',
     'Account',
@@ -61,10 +91,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const List<String> _subtitles = <String>[
     'Browse people who need support right now.',
-    'Manage the help you have asked the community for.',
-    'Protected conversations inside the platform.',
+    'Your requests and help credits.',
+    'Protected conversations inside Ghmera.',
     'Trust, wellbeing, and moderation controls.',
-    'Identity, privacy, sessions, and reviews.',
+    'Profile, credits, privacy, and reviews.',
   ];
 
   @override
@@ -77,10 +107,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       _RequestsTab(
         onCreateRequest: _openStandardRequest,
-        onEditRequest: _editRequest,
         onLongPressMyRequest: _showMyRequestActions,
         onManageAcceptedRequest: _showAcceptedRequestActionsSheet,
+        onOpenRequest: _showRequestDetailsSheet,
         onDirectRequestHelper: _startDirectHelperRequestFlow,
+        onFindPeopleToHelp: () => _selectTab(_giveHelpTabIndex),
       ),
       _MessagesTab(onOpenThread: _showThreadSheet),
       _SafetyTab(onReviewRequest: _showRequestDetailsSheet),
@@ -92,147 +123,102 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         automaticallyImplyLeading: false,
         centerTitle: false,
+        toolbarHeight: 64,
         leading: isPrimaryTab
             ? null
             : uniformBackButton(
                 context,
                 onPressed: () => _selectTab(_giveHelpTabIndex),
               ),
-        titleSpacing: 10,
-        title: _buildAppBarTitle(context),
+        titleSpacing: isPrimaryTab ? 16 : 0,
+        title: _buildAppBarTitle(context, appState),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: _currentIndex == _receiveHelpTabIndex
-                ? Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      IconButton(
-                        tooltip: 'Hidden requests',
-                        onPressed: _showHiddenRequestsScreen,
-                        icon: const Icon(Icons.visibility_off_outlined),
-                      ),
-                      if (appState.hiddenMyRequestsCount > 0)
-                        Positioned(
-                          right: 8,
-                          top: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.tertiary,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '${appState.hiddenMyRequestsCount}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  )
-                : Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      IconButton(
-                        tooltip: 'Notifications',
-                        onPressed: _showNotificationsSheet,
-                        icon: const Icon(Icons.notifications_none_rounded),
-                      ),
-                      if (appState.unreadNotificationsCount > 0)
-                        Positioned(
-                          right: 8,
-                          top: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.tertiary,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '${appState.unreadNotificationsCount}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+          if (_currentIndex == _receiveHelpTabIndex)
+            _BadgedIconButton(
+              tooltip: 'Hidden requests',
+              icon: Icons.visibility_off_outlined,
+              count: appState.hiddenMyRequestsCount,
+              onPressed: _showHiddenRequestsScreen,
+            ),
+          if (_currentIndex != _messagesTabIndex)
+            _BadgedIconButton(
+              tooltip: 'Messages',
+              icon: Icons.chat_bubble_outline_rounded,
+              onPressed: () => _selectTab(_messagesTabIndex),
+            ),
+          _BadgedIconButton(
+            tooltip: 'Notifications',
+            icon: Icons.notifications_none_rounded,
+            count: appState.unreadNotificationsCount,
+            onPressed: _showNotificationsSheet,
           ),
           if (_currentIndex == _giveHelpTabIndex)
             IconButton(
-              tooltip: 'Messages',
-              onPressed: () => _selectTab(_messagesTabIndex),
-              icon: const Icon(Icons.chat_bubble_outline_rounded),
+              tooltip: 'Menu',
+              onPressed: _openHomeMenu,
+              icon: const Icon(Icons.menu_rounded),
             ),
-          if (_currentIndex == _giveHelpTabIndex)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: IconButton(
-                tooltip: 'Menu',
-                onPressed: _openHomeMenu,
-                icon: const Icon(Icons.menu_rounded),
-              ),
-            ),
+          const SizedBox(width: 6),
         ],
       ),
       body: SafeArea(
+        top: false,
+        bottom: !isPrimaryTab,
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 240),
+          duration: const Duration(milliseconds: 220),
+          switchInCurve: Curves.easeOutCubic,
           child: KeyedSubtree(
             key: ValueKey<int>(_currentIndex),
-            child: pages[_currentIndex],
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: pages[_currentIndex],
+              ),
+            ),
           ),
         ),
       ),
       bottomNavigationBar: isPrimaryTab
-          ? NavigationBar(
-              selectedIndex: _primaryNavigationIndexFor(_currentIndex),
-              onDestinationSelected: (index) {
-                switch (index) {
-                  case 0:
-                    _selectTab(_giveHelpTabIndex);
-                  case 1:
-                    _selectTab(_receiveHelpTabIndex);
-                  case 2:
-                    _selectTab(_accountTabIndex);
-                }
-              },
-              destinations: const <NavigationDestination>[
-                NavigationDestination(
-                  icon: Icon(Icons.volunteer_activism_outlined),
-                  selectedIcon: Icon(Icons.volunteer_activism_rounded),
-                  label: 'Give Help',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.request_page_outlined),
-                  selectedIcon: Icon(Icons.request_page_rounded),
-                  label: 'Receive Help',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.person_outline_rounded),
-                  selectedIcon: Icon(Icons.person_rounded),
-                  label: 'Account',
-                ),
-              ],
+          ? DecoratedBox(
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: GhColors.line)),
+              ),
+              child: NavigationBar(
+                selectedIndex: _primaryNavigationIndexFor(_currentIndex),
+                onDestinationSelected: (index) {
+                  switch (index) {
+                    case 0:
+                      _selectTab(_giveHelpTabIndex);
+                    case 1:
+                      _selectTab(_receiveHelpTabIndex);
+                    case 2:
+                      _selectTab(_accountTabIndex);
+                  }
+                },
+                destinations: const <NavigationDestination>[
+                  NavigationDestination(
+                    icon: Icon(Icons.volunteer_activism_outlined),
+                    selectedIcon: Icon(Icons.volunteer_activism_rounded),
+                    label: 'Give Help',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.front_hand_outlined),
+                    selectedIcon: Icon(Icons.front_hand_rounded),
+                    label: 'Receive Help',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.person_outline_rounded),
+                    selectedIcon: Icon(Icons.person_rounded),
+                    label: 'Account',
+                  ),
+                ],
+              ),
             )
           : null,
     );
   }
 
-  Widget _buildAppBarTitle(BuildContext context) {
+  Widget _buildAppBarTitle(BuildContext context, GhmeraAppState appState) {
     if (_currentIndex != _giveHelpTabIndex) {
       return uniformAppBarTitle(
         context,
@@ -241,26 +227,47 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return SizedBox(
-      height: 50,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Image.asset(
-          'assets/branding/ghmera_app_icon_foreground.png',
-          width: 48,
-          height: 48,
-          fit: BoxFit.contain,
-          color: Theme.of(context).appBarTheme.foregroundColor,
-          colorBlendMode: BlendMode.srcIn,
-          errorBuilder: (context, error, stackTrace) => Text(
-            _titles[_currentIndex],
-            style: uniformHeadingTextStyle(
-              context,
-            ).copyWith(color: Theme.of(context).colorScheme.primary),
+    final user = appState.currentUser;
+    final firstName = user.fullName.trim().split(RegExp(r'\s+')).first;
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        GhAvatar(name: user.fullName, photo: user.profilePhoto, size: 40),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _greetingForNow(),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: GhColors.inkSoft,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                firstName.isEmpty ? 'Welcome' : firstName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleLarge,
+              ),
+            ],
           ),
         ),
-      ),
+      ],
     );
+  }
+
+  String _greetingForNow() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) {
+      return 'Good morning';
+    }
+    if (hour < 17) {
+      return 'Good afternoon';
+    }
+    return 'Good evening';
   }
 
   void _selectTab(int index) {
@@ -426,7 +433,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return showModalBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(GhRadius.sheet),
+        ),
       ),
       builder: (sheetContext) {
         final helperFirstName = helper.fullName.trim().split(' ').first;
@@ -452,9 +461,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   editableRequests.isEmpty
                       ? 'Create a new request and send it directly to. $helperFirstName.'
                       : 'Choose an existing request or create a new one for $helperFirstName.',
-                  style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF61726F),
-                  ),
+                  style: Theme.of(
+                    sheetContext,
+                  ).textTheme.bodyMedium?.copyWith(color: GhColors.inkSoft),
                 ),
               ),
               if (editableRequests.isEmpty)
@@ -462,19 +471,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
                   child: Text(
                     'No editable requests are available yet.',
-                    style: TextStyle(color: Color(0xFF61726F)),
+                    style: TextStyle(color: GhColors.inkSoft),
                   ),
                 )
               else
                 for (final request in editableRequests)
                   ListTile(
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(5),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     onTap: () => Navigator.of(sheetContext).pop(request.id),
                     leading: const Icon(Icons.assignment_outlined),
                     title: Text(
-                      request.title,
+                      request.displayTitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(sheetContext).textTheme.titleSmall
@@ -484,8 +493,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       '${request.category.label} • ${request.location}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(sheetContext).textTheme.bodySmall
-                          ?.copyWith(color: const Color(0xFF61726F)),
+                      style: Theme.of(
+                        sheetContext,
+                      ).textTheme.bodySmall?.copyWith(color: GhColors.inkSoft),
                     ),
                   ),
               _MenuSheetActionTile(
@@ -517,7 +527,9 @@ class _HomeScreenState extends State<HomeScreen> {
         await showModalBottomSheet<_AcceptedRequestMenuAction>(
           context: context,
           shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(GhRadius.sheet),
+            ),
           ),
           builder: (sheetContext) {
             return SafeArea(
@@ -531,7 +543,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
                       child: Text(
-                        request.title,
+                        request.displayTitle,
                         style: Theme.of(sheetContext).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w800),
                       ),
@@ -541,7 +553,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Text(
                         'Actions for ${helper.fullName}',
                         style: Theme.of(sheetContext).textTheme.bodyMedium
-                            ?.copyWith(color: const Color(0xFF61726F)),
+                            ?.copyWith(color: GhColors.inkSoft),
                       ),
                     ),
                     _MenuSheetActionTile(
@@ -561,7 +573,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _MenuSheetActionTile(
                       icon: Icons.report_outlined,
                       label: 'Report help giver',
-                      foregroundColor: const Color(0xFF9A2F2F),
+                      foregroundColor: GhColors.coral,
                       onTap: () => Navigator.of(
                         sheetContext,
                       ).pop(_AcceptedRequestMenuAction.reportHelpGiver),
@@ -569,7 +581,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _MenuSheetActionTile(
                       icon: Icons.cancel_outlined,
                       label: 'Cancel request',
-                      foregroundColor: const Color(0xFF9A2F2F),
+                      foregroundColor: GhColors.coral,
                       onTap: () => Navigator.of(
                         sheetContext,
                       ).pop(_AcceptedRequestMenuAction.cancelRequest),
@@ -710,7 +722,9 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(GhRadius.sheet),
+        ),
       ),
       builder: (_) =>
           _HelpGiverRatingSheet(request: request, helpGiver: helpGiver),
@@ -765,8 +779,11 @@ class _HomeScreenState extends State<HomeScreen> {
     showGhmeraSnackBar(
       context,
       message: canceled
-          ? 'Request canceled and removed from active help.'
-          : 'This request could not be canceled.',
+          ? isCreditFreeRequest(request)
+                ? 'Request canceled.'
+                : 'Request canceled. Both held credits were returned.'
+          : appState.lastWorkflowError ?? 'This request could not be canceled.',
+      type: canceled ? SnackBarType.success : SnackBarType.error,
     );
   }
 
@@ -777,7 +794,9 @@ class _HomeScreenState extends State<HomeScreen> {
         await showModalBottomSheet<_CommunityRequestMenuAction>(
           context: context,
           shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(GhRadius.sheet),
+            ),
           ),
           builder: (sheetContext) {
             return SafeArea(
@@ -791,7 +810,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
                       child: Text(
-                        request.title,
+                        request.displayTitle,
                         style: Theme.of(sheetContext).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w800),
                       ),
@@ -801,7 +820,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Text(
                         'Actions for ${requester.fullName}',
                         style: Theme.of(sheetContext).textTheme.bodyMedium
-                            ?.copyWith(color: const Color(0xFF61726F)),
+                            ?.copyWith(color: GhColors.inkSoft),
                       ),
                     ),
                     _MenuSheetActionTile(
@@ -821,7 +840,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _MenuSheetActionTile(
                       icon: Icons.block_outlined,
                       label: 'Block account',
-                      foregroundColor: const Color(0xFF9A2F2F),
+                      foregroundColor: GhColors.coral,
                       onTap: () => Navigator.of(
                         sheetContext,
                       ).pop(_CommunityRequestMenuAction.blockAccount),
@@ -872,7 +891,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final selectedAction = await showModalBottomSheet<_MyRequestMenuAction>(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(GhRadius.sheet),
+        ),
       ),
       builder: (sheetContext) {
         return SafeArea(
@@ -886,7 +907,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
                   child: Text(
-                    request.title,
+                    request.displayTitle,
                     style: Theme.of(sheetContext).textTheme.titleMedium
                         ?.copyWith(fontWeight: FontWeight.w800),
                   ),
@@ -895,9 +916,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
                   child: Text(
                     'Request actions',
-                    style: Theme.of(sheetContext).textTheme.bodyMedium
-                        ?.copyWith(color: const Color(0xFF61726F)),
+                    style: Theme.of(
+                      sheetContext,
+                    ).textTheme.bodyMedium?.copyWith(color: GhColors.inkSoft),
                   ),
+                ),
+                _MenuSheetActionTile(
+                  icon: Icons.open_in_new_rounded,
+                  label: 'View details',
+                  onTap: () => Navigator.of(
+                    sheetContext,
+                  ).pop(_MyRequestMenuAction.viewDetails),
                 ),
                 _MenuSheetActionTile(
                   icon: Icons.edit_outlined,
@@ -916,7 +945,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _MenuSheetActionTile(
                   icon: Icons.delete_outline_rounded,
                   label: 'Delete this request',
-                  foregroundColor: const Color(0xFF9A2F2F),
+                  foregroundColor: GhColors.coral,
                   onTap: () => Navigator.of(
                     sheetContext,
                   ).pop(_MyRequestMenuAction.deleteThisRequest),
@@ -934,6 +963,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final appState = context.read<GhmeraAppState>();
     switch (selectedAction) {
+      case _MyRequestMenuAction.viewDetails:
+        await _showRequestDetailsSheet(request);
+        return;
       case _MyRequestMenuAction.editThisRequest:
         await _editRequest(request);
         return;
@@ -960,8 +992,12 @@ class _HomeScreenState extends State<HomeScreen> {
         showGhmeraSnackBar(
           context,
           message: deleted
-              ? 'Request deleted.'
-              : 'This request could not be deleted.',
+              ? isCreditFreeRequest(request)
+                    ? 'Request deleted.'
+                    : 'Request deleted. Both held credits are available again.'
+              : appState.lastWorkflowError ??
+                    'This request could not be deleted.',
+          type: deleted ? SnackBarType.success : SnackBarType.error,
         );
         return;
     }
@@ -973,7 +1009,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete request'),
         content: Text(
-          'Delete ${request.title}? This only works for requests that have not been accepted yet.',
+          'Delete ${request.displayTitle}? This only works for requests that have not been accepted yet.',
         ),
         actions: [
           TextButton(
@@ -999,7 +1035,9 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(GhRadius.sheet),
+        ),
       ),
       builder: (_) =>
           _AccountReportSheet(reportedUser: reportedUser, request: request),
@@ -1021,7 +1059,9 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(GhRadius.sheet),
+        ),
       ),
       builder: (_) =>
           _SafetyReportSheet(request: request, reportedUser: reportedUser),
@@ -1129,7 +1169,9 @@ class _ThreadScreenState extends State<_ThreadScreen> {
     final action = await showModalBottomSheet<_MessageAction>(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(GhRadius.sheet),
+        ),
       ),
       builder: (sheetContext) {
         return SafeArea(
@@ -1149,7 +1191,7 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                     style: Theme.of(sheetContext).textTheme.titleSmall
                         ?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: const Color(0xFF103B36),
+                          color: GhColors.brandDark,
                         ),
                   ),
                 ),
@@ -1159,9 +1201,9 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                     isMe
                         ? 'Sent by you • ${_relativeTime(message.createdAt)}'
                         : 'From ${peer?.fullName ?? "Peer"} • ${_relativeTime(message.createdAt)}',
-                    style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF61726F),
-                    ),
+                    style: Theme.of(
+                      sheetContext,
+                    ).textTheme.bodySmall?.copyWith(color: GhColors.inkSoft),
                   ),
                 ),
                 _MenuSheetActionTile(
@@ -1180,7 +1222,7 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                   _MenuSheetActionTile(
                     icon: Icons.delete_outline_rounded,
                     label: 'Delete message',
-                    foregroundColor: const Color(0xFF9A2F2F),
+                    foregroundColor: GhColors.coral,
                     onTap: () =>
                         Navigator.of(sheetContext).pop(_MessageAction.delete),
                   ),
@@ -1188,7 +1230,7 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                   _MenuSheetActionTile(
                     icon: Icons.report_outlined,
                     label: 'Report message / safety flag',
-                    foregroundColor: const Color(0xFF9A2F2F),
+                    foregroundColor: GhColors.coral,
                     onTap: () =>
                         Navigator.of(sheetContext).pop(_MessageAction.report),
                   ),
@@ -1240,7 +1282,9 @@ class _ThreadScreenState extends State<_ThreadScreen> {
             context: context,
             isScrollControlled: true,
             shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(GhRadius.sheet),
+              ),
             ),
             builder: (_) =>
                 _SafetyReportSheet(request: request, reportedUser: peer),
@@ -1259,238 +1303,309 @@ class _ThreadScreenState extends State<_ThreadScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        centerTitle: false,
-        leading: uniformBackButton(context),
-        title: uniformAppBarTitle(
-          context,
-          title: 'Protected chat',
-          subtitle: 'Secure conversation with your matched peer.',
-        ),
-      ),
-      body: SafeArea(
-        child: Consumer<GhmeraAppState>(
-          builder: (context, appState, _) {
-            final thread =
-                appState.messageThreads.firstWhereOrNull(
-                  (candidate) => candidate.id == widget.initialThread.id,
-                ) ??
-                widget.initialThread;
-            final peer = appState.peerForThread(thread);
-            final request = appState.requestById(thread.requestId);
-            final messages = appState.messagesForThread(thread.id);
-            final isMessagingBlocked = appState.isMessagingBlockedForThread(
-              thread,
-            );
-            final theme = Theme.of(context);
-            final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return Consumer<GhmeraAppState>(
+      builder: (context, appState, _) {
+        final thread =
+            appState.messageThreads.firstWhereOrNull(
+              (candidate) => candidate.id == widget.initialThread.id,
+            ) ??
+            widget.initialThread;
+        final peer = appState.peerForThread(thread);
+        final request = appState.requestById(thread.requestId);
+        final messages = appState.messagesForThread(thread.id);
+        final isMessagingBlocked = appState.isMessagingBlockedForThread(thread);
+        final theme = Theme.of(context);
 
-            return Padding(
-              padding: EdgeInsets.fromLTRB(10, 12, 10, bottomInset + 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    peer?.fullName ?? 'Conversation',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    request.title,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF61726F),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 350),
-                    curve: Curves.easeInOut,
-                    child: (_showProtectedBanner || isMessagingBlocked)
-                        ? Container(
-                            margin: const EdgeInsets.only(bottom: 14),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6F5),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: const Color(0xFFB2DFDB),
-                              ),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x08000000),
-                                  blurRadius: 10,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF103B36),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.shield_outlined,
-                                    color: Colors.white,
-                                    size: 16,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    isMessagingBlocked
-                                        ? 'Messaging is disabled because one of the accounts in this conversation is blocked. You can still review the conversation history.'
-                                        : thread.messageRequestPending
-                                        ? 'This thread is still a message request. Contact details stay hidden until the match is accepted and both sides consent.'
-                                        : 'Protected chat is active. Contact sharing still requires explicit consent from both users.',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      height: 1.4,
-                                      color: const Color(0xFF103B36),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                if (!isMessagingBlocked)
-                                  InkWell(
-                                    onTap: () {
-                                      _bannerTimer?.cancel();
-                                      setState(() {
-                                        _showProtectedBanner = false;
-                                      });
-                                    },
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: const Padding(
-                                      padding: EdgeInsets.all(4.0),
-                                      child: Icon(
-                                        Icons.close_rounded,
-                                        size: 18,
-                                        color: Color(0xFF61726F),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: ListView.builder(
-                      reverse: true,
-                      padding: const EdgeInsets.only(bottom: 8),
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
-                        final message = messages[messages.length - 1 - index];
-                        final isMe = message.senderId == appState.currentUserId;
-
-                        return Align(
-                          alignment: isMe
-                              ? Alignment.centerRight
-                              : Alignment.centerLeft,
-                          child: GestureDetector(
-                            onTap: () => _showMessageActionsSheet(
-                              message: message,
-                              isMe: isMe,
-                              peer: peer,
-                              request: request,
-                            ),
-                            child: Container(
-                              constraints: const BoxConstraints(maxWidth: 320),
-                              margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: isMe
-                                    ? const Color(0xFF103B36)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x0F000000),
-                                    blurRadius: 16,
-                                    offset: Offset(0, 8),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    message.content,
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: isMe
-                                          ? Colors.white
-                                          : const Color(0xFF223532),
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _relativeTime(message.createdAt),
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: isMe
-                                          ? Colors.white.withValues(alpha: 0.68)
-                                          : const Color(0xFF758481),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+        return Scaffold(
+          appBar: AppBar(
+            automaticallyImplyLeading: false,
+            centerTitle: false,
+            titleSpacing: 0,
+            leading: uniformBackButton(context),
+            title: Row(
+              children: [
+                GhAvatar(
+                  name: peer?.fullName ?? 'Conversation',
+                  photo: peer?.profilePhoto,
+                  size: 38,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _messageController,
-                          enabled: !isMessagingBlocked,
-                          minLines: 1,
-                          maxLines: 4,
-                          textCapitalization: TextCapitalization.sentences,
-                          decoration: const InputDecoration(
-                            labelText: 'Message',
-                            hintText: 'Reply inside protected chat',
-                          ),
-                          onSubmitted: (isMessagingBlocked || _isSending)
-                              ? null
-                              : (_) => _sendMessage(appState, thread),
-                        ),
+                      Text(
+                        peer?.fullName ?? 'Conversation',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium,
                       ),
-                      const SizedBox(width: 12),
-                      FilledButton(
-                        onPressed: (isMessagingBlocked || _isSending)
-                            ? null
-                            : () => _sendMessage(appState, thread),
-                        child: _isSending
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Send'),
+                      Text(
+                        request.displayTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
                       ),
                     ],
                   ),
-                ],
+                ),
+              ],
+            ),
+            actions: [
+              IconButton(
+                tooltip: 'Safety info',
+                onPressed: _startBannerTimer,
+                icon: const Icon(Icons.shield_outlined),
               ),
-            );
-          },
-        ),
-      ),
+              const SizedBox(width: 6),
+            ],
+          ),
+          body: Column(
+            children: [
+              AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                child: (_showProtectedBanner || isMessagingBlocked)
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                        child: GhInfoBanner(
+                          icon: isMessagingBlocked
+                              ? Icons.block_rounded
+                              : Icons.shield_outlined,
+                          foreground: isMessagingBlocked
+                              ? GhColors.coral
+                              : GhColors.brandDark,
+                          background: isMessagingBlocked
+                              ? GhColors.coralSoft
+                              : GhColors.brandSoft,
+                          message: isMessagingBlocked
+                              ? 'Messaging is disabled because one of the accounts in this conversation is blocked. You can still review the conversation history.'
+                              : thread.messageRequestPending
+                              ? 'This thread is still a message request. Contact details stay hidden until the match is accepted and both sides consent.'
+                              : 'Protected chat is active. Contact sharing still requires explicit consent from both users.',
+                          action: isMessagingBlocked
+                              ? null
+                              : TextButton(
+                                  onPressed: () {
+                                    _bannerTimer?.cancel();
+                                    setState(() {
+                                      _showProtectedBanner = false;
+                                    });
+                                  },
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: const Size(0, 28),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  child: const Text('Got it'),
+                                ),
+                        ),
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
+              Expanded(
+                child: messages.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const GhIconBadge(
+                                icon: Icons.waving_hand_outlined,
+                                size: 56,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Say hello',
+                                style: theme.textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Agree on a time and place here before sharing any contact details.',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: GhColors.inkSoft,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        reverse: true,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                        itemCount: messages.length,
+                        itemBuilder: (context, index) {
+                          final message = messages[messages.length - 1 - index];
+                          final isMe =
+                              message.senderId == appState.currentUserId;
+
+                          return Align(
+                            alignment: isMe
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
+                            child: GestureDetector(
+                              onLongPress: () => _showMessageActionsSheet(
+                                message: message,
+                                isMe: isMe,
+                                peer: peer,
+                                request: request,
+                              ),
+                              onTap: () => _showMessageActionsSheet(
+                                message: message,
+                                isMe: isMe,
+                                peer: peer,
+                                request: request,
+                              ),
+                              child: Container(
+                                constraints: BoxConstraints(
+                                  maxWidth:
+                                      MediaQuery.sizeOf(context).width * 0.76,
+                                ),
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  10,
+                                  14,
+                                  8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isMe
+                                      ? GhColors.brand
+                                      : GhColors.surface,
+                                  border: isMe
+                                      ? null
+                                      : Border.all(color: GhColors.line),
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: const Radius.circular(20),
+                                    topRight: const Radius.circular(20),
+                                    bottomLeft: Radius.circular(isMe ? 20 : 6),
+                                    bottomRight: Radius.circular(isMe ? 6 : 20),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: isMe
+                                      ? CrossAxisAlignment.end
+                                      : CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      message.content,
+                                      style: theme.textTheme.bodyLarge
+                                          ?.copyWith(
+                                            color: isMe
+                                                ? Colors.white
+                                                : GhColors.ink,
+                                            height: 1.35,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _relativeTime(message.createdAt),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            fontSize: 11,
+                                            color: isMe
+                                                ? Colors.white.withValues(
+                                                    alpha: 0.7,
+                                                  )
+                                                : GhColors.inkFaint,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              DecoratedBox(
+                decoration: const BoxDecoration(
+                  color: GhColors.surface,
+                  border: Border(top: BorderSide(color: GhColors.line)),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            enabled: !isMessagingBlocked,
+                            minLines: 1,
+                            maxLines: 4,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: InputDecoration(
+                              hintText: isMessagingBlocked
+                                  ? 'Messaging is disabled'
+                                  : 'Message ${peer?.fullName.split(' ').first ?? ''}'
+                                        .trim(),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 12,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: const BorderSide(
+                                  color: GhColors.line,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: const BorderSide(
+                                  color: GhColors.line,
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: const BorderSide(
+                                  color: GhColors.brand,
+                                  width: 1.4,
+                                ),
+                              ),
+                            ),
+                            onSubmitted: (isMessagingBlocked || _isSending)
+                                ? null
+                                : (_) => _sendMessage(appState, thread),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton.filled(
+                          tooltip: 'Send',
+                          onPressed: (isMessagingBlocked || _isSending)
+                              ? null
+                              : () => _sendMessage(appState, thread),
+                          style: IconButton.styleFrom(
+                            backgroundColor: GhColors.brand,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: const Color(0xFFDCE4E2),
+                            fixedSize: const Size(48, 48),
+                          ),
+                          icon: _isSending
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.arrow_upward_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -1620,7 +1735,9 @@ class _RequestDetailsScreen extends StatelessWidget {
             context: context,
             isScrollControlled: true,
             shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(GhRadius.sheet),
+              ),
             ),
             builder: (_) =>
                 _ReviewSubmissionSheet(request: request, reviewee: reviewee),
@@ -1648,7 +1765,9 @@ class _RequestDetailsScreen extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(GhRadius.sheet),
+        ),
       ),
       builder: (_) =>
           _HelpGiverRatingSheet(request: request, helpGiver: helpGiver),
@@ -1664,7 +1783,9 @@ class _RequestDetailsScreen extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(GhRadius.sheet),
+        ),
       ),
       builder: (_) =>
           _SafetyReportSheet(request: request, reportedUser: reportedUser),
@@ -1676,19 +1797,6 @@ class _RequestDetailsScreen extends StatelessWidget {
         message: 'Safety report submitted to moderators.',
       );
     }
-  }
-
-  String _requestDetailsSubtitle(HelpRequestEntity request) {
-    final subtitleParts = <String>[request.status.label];
-    final location = request.location.trim();
-    final preferredTime = request.preferredTime.trim();
-    if (location.isNotEmpty) {
-      subtitleParts.add(location);
-    }
-    if (preferredTime.isNotEmpty) {
-      subtitleParts.add(preferredTime);
-    }
-    return subtitleParts.join(' • ');
   }
 
   String _actionActorLabel({
@@ -1711,21 +1819,17 @@ class _RequestDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<GhmeraAppState>();
-    final appBarRequest = appState.requestById(initialRequest.id);
-
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
         centerTitle: false,
+        titleSpacing: 0,
         leading: uniformBackButton(context),
-        title: uniformAppBarTitle(
-          context,
-          title: 'Request details',
-          subtitle: _requestDetailsSubtitle(appBarRequest),
-        ),
+        title: uniformAppBarTitle(context, title: 'Request details'),
       ),
       body: SafeArea(
+        top: false,
+        bottom: false,
         child: Consumer<GhmeraAppState>(
           builder: (context, appState, _) {
             final request = appState.requestById(initialRequest.id);
@@ -1747,6 +1851,7 @@ class _RequestDetailsScreen extends StatelessWidget {
             final isParticipant = appState.isCurrentUserParticipantForRequest(
               request,
             );
+            final isRequester = request.requesterId == appState.currentUserId;
             final hasConfirmedCompletion = appState
                 .hasCurrentUserConfirmedRequestCompletion(request);
             final hasSubmittedReview = appState
@@ -1754,256 +1859,246 @@ class _RequestDetailsScreen extends StatelessWidget {
             final canSubmitReview = appState
                 .canCurrentUserSubmitReviewForRequest(request);
             final requesterCanRateNow =
-                request.requesterId == appState.currentUserId &&
-                canSubmitReview &&
-                !hasSubmittedReview;
+                isRequester && canSubmitReview && !hasSubmittedReview;
+            final categoryStyle = GhCategoryStyle.of(request.category);
+            final statusColor = ghStatusColor(request.status);
             final theme = Theme.of(context);
 
+            final horizontalPadding = math.max(
+              16.0,
+              (MediaQuery.sizeOf(context).width - 760) / 2,
+            );
             return ListView(
-              padding: const EdgeInsets.fromLTRB(10, 12, 10, 28),
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                4,
+                horizontalPadding,
+                28,
+              ),
               children: [
-                Text(
-                  request.title,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${requester.fullName} • ${_relativeTime(request.createdAt)}',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF61726F),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _Pill(
-                      label: request.category.label,
-                      color: const Color(0xFFE5F1ED),
-                    ),
-                    _Pill(
-                      label: request.status.label,
-                      color: _statusColor(
-                        request.status,
-                      ).withValues(alpha: 0.14),
-                      textColor: _statusColor(request.status),
-                    ),
-                    _Pill(
-                      label: request.urgency.label,
-                      color: _urgencyColor(
-                        request.urgency,
-                      ).withValues(alpha: 0.14),
-                      textColor: _urgencyColor(request.urgency),
-                    ),
-                    _Pill(
-                      label: request.visibility.label,
-                      color: const Color(0xFFF5F1E8),
-                    ),
-                    if (request.emotionalSupportMode)
-                      const _Pill(
-                        label: 'Emotional support',
-                        color: Color(0xFFFFE8EE),
-                      ),
-                    if (request.isHighRisk)
-                      const _Pill(label: 'High risk', color: Color(0xFFFFE9D6)),
-                    if (request.safetyCheckInRequired)
-                      const _Pill(
-                        label: 'Safety check-in',
-                        color: Color(0xFFE8F1FF),
-                      ),
-                    if (request.attachmentLabel != null)
-                      _Pill(
-                        label: request.attachmentLabel!,
-                        color: const Color(0xFFF5F1E8),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(5),
-                    boxShadow: const <BoxShadow>[
-                      BoxShadow(
-                        color: Color(0x10000000),
-                        blurRadius: 20,
-                        offset: Offset(0, 10),
-                      ),
-                    ],
-                  ),
+                GhCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        request.description,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          height: 1.45,
-                          color: const Color(0xFF233532),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.location_on_outlined, size: 18),
-                          const SizedBox(width: 8),
+                          GhIconBadge(
+                            icon: categoryStyle.icon,
+                            color: categoryStyle.color,
+                            size: 46,
+                          ),
+                          const SizedBox(width: 12),
                           Expanded(
-                            child: Text(
-                              '${request.location} • ${request.preferredTime}',
-                              style: theme.textTheme.bodyMedium,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  request.category.label,
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: categoryStyle.color,
+                                  ),
+                                ),
+                                Text(
+                                  'Posted ${_relativeTime(request.createdAt)}',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ],
                             ),
+                          ),
+                          GhTag(
+                            label: request.status.label,
+                            foreground: statusColor,
+                            background: statusColor.withValues(alpha: 0.12),
                           ),
                         ],
                       ),
-                      if (helper != null) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 16),
+                      Text(
+                        request.displayTitle,
+                        style: theme.textTheme.headlineSmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        request.description,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: GhColors.inkSoft,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 6),
+                      _DetailRow(
+                        icon: Icons.place_outlined,
+                        label: 'Location',
+                        value: request.location,
+                      ),
+                      _DetailRow(
+                        icon: Icons.schedule_rounded,
+                        label: 'Preferred time',
+                        value: request.preferredTime,
+                      ),
+                      _DetailRow(
+                        icon: Icons.bolt_rounded,
+                        label: 'Urgency',
+                        value: request.urgency.label,
+                        valueColor: ghUrgencyColor(request.urgency),
+                      ),
+                      if (request.attachmentLabel != null)
+                        _DetailRow(
+                          icon: Icons.attach_file_rounded,
+                          label: 'Attachment',
+                          value: request.attachmentLabel!,
+                        ),
+                      if (request.emotionalSupportMode ||
+                          request.isHighRisk ||
+                          request.safetyCheckInRequired) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
                           children: [
-                            const Icon(Icons.handshake_outlined, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Accepted helper: ${helper.fullName}',
-                                style: theme.textTheme.bodyMedium,
+                            if (request.emotionalSupportMode)
+                              const GhTag(
+                                icon: Icons.favorite_rounded,
+                                label: 'Emotional support',
+                                foreground: GhColors.rose,
+                                background: GhColors.roseSoft,
                               ),
-                            ),
+                            if (request.isHighRisk)
+                              const GhTag(
+                                icon: Icons.shield_outlined,
+                                label: 'Extra safety checks',
+                                foreground: GhColors.amber,
+                                background: GhColors.amberSoft,
+                              ),
+                            if (request.safetyCheckInRequired)
+                              const GhTag(
+                                icon: Icons.verified_user_outlined,
+                                label: 'Safety check-in',
+                                foreground: GhColors.sky,
+                                background: GhColors.skySoft,
+                              ),
                           ],
                         ),
                       ],
                     ],
                   ),
                 ),
-                if (timelineEntries.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  Text(
-                    'Request timeline',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                const SizedBox(height: 14),
+                if (!isRequester)
+                  _PersonStatsCard(
+                    title: 'About the requester',
+                    user: requester,
+                    stats: appState.helpStatsForUser(requester.id),
+                  )
+                else if (helper != null)
+                  _PersonStatsCard(
+                    title: 'Your helper',
+                    user: helper,
+                    stats: appState.helpStatsForUser(helper.id),
                   ),
+                const SizedBox(height: 14),
+                _RequestCreditNote(
+                  request: request,
+                  isRequester: isRequester,
+                  requesterFirstName: requester.fullName.split(' ').first,
+                  isCurrentUserHelper:
+                      request.acceptedHelperId == appState.currentUserId,
+                ),
+                if (request.isHighRisk) ...[
                   const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(5),
-                      boxShadow: const <BoxShadow>[
-                        BoxShadow(
-                          color: Color(0x10000000),
-                          blurRadius: 20,
-                          offset: Offset(0, 10),
-                        ),
-                      ],
-                    ),
+                  const GhInfoBanner(
+                    icon: Icons.health_and_safety_outlined,
+                    foreground: GhColors.amber,
+                    background: GhColors.amberSoft,
+                    message:
+                        'This request triggers stronger safety handling. Exact location and off-platform contact stay gated until trust and consent checks are complete.',
+                  ),
+                ],
+                if (isParticipant && request.acceptedHelperId != null) ...[
+                  const SizedBox(height: 22),
+                  const GhSectionHeader(
+                    title: 'Progress',
+                    padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
+                  ),
+                  GhCard(
+                    shadow: false,
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (
-                          var index = 0;
-                          index < timelineEntries.length;
-                          index++
-                        ) ...[
-                          if (index > 0)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                              child: Divider(height: 1),
-                            ),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 10,
-                                height: 10,
-                                margin: const EdgeInsets.only(top: 6),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF103B36),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      timelineEntries[index].action,
-                                      style: theme.textTheme.titleSmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${_actionActorLabel(appState: appState, requester: requester, helper: helper, entry: timelineEntries[index])} • ${_relativeTime(timelineEntries[index].createdAt)}',
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: const Color(0xFF61726F),
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                        _ConfirmationRow(
+                          label: isRequester
+                              ? 'You confirmed help received'
+                              : '${requester.fullName.split(' ').first} confirmed help received',
+                          done: request.requesterCompletionConfirmed,
+                        ),
+                        const SizedBox(height: 10),
+                        _ConfirmationRow(
+                          label: isRequester
+                              ? '${helper?.fullName.split(' ').first ?? 'Helper'} confirmed help given'
+                              : 'You confirmed help given',
+                          done: request.helperCompletionConfirmed,
+                        ),
+                        if (hasSubmittedReview) ...[
+                          const SizedBox(height: 10),
+                          const _ConfirmationRow(
+                            label: 'Your review was submitted',
+                            done: true,
                           ),
                         ],
+                        const SizedBox(height: 12),
+                        Text(
+                          hasConfirmedCompletion
+                              ? hasSubmittedReview
+                                    ? request.status ==
+                                              HelpRequestStatus.completed
+                                          ? 'Your completion confirmation and rating are saved.'
+                                          : 'Your confirmation and rating are saved. The request closes when the other person confirms too.'
+                                    : requesterCanRateNow
+                                    ? 'Your confirmation is saved. You can rate your helper now while the request waits for them to confirm.'
+                                    : 'Your confirmation is saved. The request closes when the other person confirms too.'
+                              : isRequester
+                              ? 'When the help is done, confirm it below. You can rate your helper right after.'
+                              : 'When the help is done, confirm it below. Reviews open once both of you confirm.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: GhColors.inkSoft,
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ],
                 if (request.acceptedHelperId != null) ...[
-                  const SizedBox(height: 18),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF7F3EB),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
+                  const SizedBox(height: 22),
+                  const GhSectionHeader(
+                    title: 'Privacy',
+                    padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
+                  ),
+                  GhCard(
+                    shadow: false,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Contact permissions',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
+                        _ConfirmationRow(
+                          label:
+                              '${requester.fullName.split(' ').first} ${request.contactConsentFromRequester ? 'shared' : 'has not shared'} contact details',
+                          done: request.contactConsentFromRequester,
+                        ),
+                        if (helper != null) ...[
+                          const SizedBox(height: 10),
+                          _ConfirmationRow(
+                            label:
+                                '${helper.fullName.split(' ').first} ${request.contactConsentFromHelper ? 'shared' : 'has not shared'} contact details',
+                            done: request.contactConsentFromHelper,
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _Pill(
-                              label:
-                                  '${requester.fullName.split(' ').first}: ${request.contactConsentFromRequester ? 'Shared' : 'Pending'}',
-                              color: request.contactConsentFromRequester
-                                  ? const Color(0xFFE7F5ED)
-                                  : const Color(0xFFFFF1D9),
-                            ),
-                            if (helper != null)
-                              _Pill(
-                                label:
-                                    '${helper.fullName.split(' ').first}: ${request.contactConsentFromHelper ? 'Shared' : 'Pending'}',
-                                color: request.contactConsentFromHelper
-                                    ? const Color(0xFFE7F5ED)
-                                    : const Color(0xFFFFF1D9),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
+                        ],
+                        const SizedBox(height: 12),
                         Text(
                           protectedThread == null
                               ? 'Protected chat has not been created for this request yet.'
-                              : 'Protected chat active • Last message ${_relativeTime(protectedThread.lastMessageAt)}',
+                              : 'Protected chat active · last message ${_relativeTime(protectedThread.lastMessageAt)}',
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF586965),
-                            height: 1.45,
+                            color: GhColors.inkSoft,
                           ),
                         ),
                       ],
@@ -2011,110 +2106,49 @@ class _RequestDetailsScreen extends StatelessWidget {
                   ),
                 ],
                 if (activeMatch != null && activeMatch.reasons.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  Text(
-                    'Why this match surfaced',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                  const SizedBox(height: 22),
+                  const GhSectionHeader(
+                    title: 'Why you were matched',
+                    padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
                   ),
-                  const SizedBox(height: 10),
                   Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                    spacing: 6,
+                    runSpacing: 6,
                     children: activeMatch.reasons
                         .map(
-                          (reason) => _Pill(
+                          (reason) => GhTag(
+                            icon: Icons.check_rounded,
                             label: reason,
-                            color: const Color(0xFFEAF3F0),
+                            foreground: GhColors.brandDark,
+                            background: GhColors.brandSoft,
                           ),
                         )
                         .toList(),
                   ),
                 ],
-                if (request.isHighRisk) ...[
-                  const SizedBox(height: 18),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF3E6),
-                      borderRadius: BorderRadius.circular(5),
-                      border: Border.all(color: const Color(0xFFF2C48A)),
-                    ),
-                    child: Text(
-                      'This request triggers stronger safety handling. Exact location and off-platform contact should remain gated until trust and consent checks are complete.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF6A5336),
-                        height: 1.45,
-                      ),
-                    ),
+                if (timelineEntries.isNotEmpty) ...[
+                  const SizedBox(height: 22),
+                  const GhSectionHeader(
+                    title: 'Timeline',
+                    padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
                   ),
-                ],
-                if (isParticipant && request.acceptedHelperId != null) ...[
-                  const SizedBox(height: 18),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF7F3EB),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
+                  GhCard(
+                    shadow: false,
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Progress and accountability',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
+                        for (
+                          var index = 0;
+                          index < timelineEntries.length;
+                          index++
+                        )
+                          _TimelineEntryRow(
+                            title: timelineEntries[index].action,
+                            caption:
+                                '${_actionActorLabel(appState: appState, requester: requester, helper: helper, entry: timelineEntries[index])} · ${_relativeTime(timelineEntries[index].createdAt)}',
+                            isFirst: index == 0,
+                            isLast: index == timelineEntries.length - 1,
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _Pill(
-                              label: request.requesterCompletionConfirmed
-                                  ? 'Requester confirmed'
-                                  : 'Requester pending',
-                              color: request.requesterCompletionConfirmed
-                                  ? const Color(0xFFE7F5ED)
-                                  : const Color(0xFFFFF1D9),
-                            ),
-                            _Pill(
-                              label: request.helperCompletionConfirmed
-                                  ? 'Helper confirmed'
-                                  : 'Helper pending',
-                              color: request.helperCompletionConfirmed
-                                  ? const Color(0xFFE7F5ED)
-                                  : const Color(0xFFFFF1D9),
-                            ),
-                            if (hasSubmittedReview)
-                              const _Pill(
-                                label: 'Your review submitted',
-                                color: Color(0xFFE8F1FF),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          hasConfirmedCompletion
-                              ? hasSubmittedReview
-                                    ? request.status ==
-                                              HelpRequestStatus.completed
-                                          ? 'Your completion confirmation and rating are saved.'
-                                          : 'Your completion confirmation and rating are saved. The request closes after the other participant confirms too.'
-                                    : requesterCanRateNow
-                                    ? 'Your completion confirmation is already saved. You can rate the help giver now while the request waits for the other participant to confirm.'
-                                    : 'Your completion confirmation is already saved. The request closes after the other participant confirms too.'
-                              : request.requesterId == appState.currentUserId
-                              ? 'When the help is done, confirm completion here. You can rate the help giver as soon as your confirmation is saved.'
-                              : 'When the help is done, confirm completion here. Reviews open once the request is fully completed.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF586965),
-                            height: 1.45,
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -2133,7 +2167,7 @@ class _RequestDetailsScreen extends StatelessWidget {
             request,
           );
           final chatLabel = otherParticipant == null
-              ? 'Open protected chat'
+              ? 'Chat'
               : 'Chat with ${otherParticipant.fullName.split(' ').first}';
           final canStartRequest = appState.canCurrentUserStartRequest(request);
           final canConfirmCompletion = appState
@@ -2152,167 +2186,499 @@ class _RequestDetailsScreen extends StatelessWidget {
                   request.acceptedHelperId == appState.currentUserId);
           final alreadyMatchedAsHelper =
               request.acceptedHelperId == appState.currentUserId;
-          final colorScheme = Theme.of(context).colorScheme;
-          final chatActionButtonStyle = FilledButton.styleFrom(
-            backgroundColor: colorScheme.secondary,
-            foregroundColor: colorScheme.onSecondary,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(5),
+          final showChat =
+              protectedThread != null || request.acceptedHelperId != null;
+
+          return DecoratedBox(
+            decoration: const BoxDecoration(
+              color: GhColors.surface,
+              border: Border(top: BorderSide(color: GhColors.line)),
             ),
-          );
-          final helpActionButtonStyle = FilledButton.styleFrom(
-            backgroundColor: colorScheme.primary,
-            foregroundColor: colorScheme.onPrimary,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(5),
-            ),
-          );
+            child: SafeArea(
+              top: false,
+              child: Center(
+                heightFactor: 1,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 760),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (helperCanVolunteer || showChat)
+                          Row(
+                            children: [
+                              if (showChat)
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      if (protectedThread != null) {
+                                        onOpenThread(protectedThread);
+                                        return;
+                                      }
 
-          return SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 6, 10, 12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () {
-                            if (protectedThread != null) {
-                              onOpenThread(protectedThread);
-                              return;
-                            }
+                                      showGhmeraSnackBar(
+                                        context,
+                                        message: otherParticipant == null
+                                            ? 'Chat opens after a helper match is confirmed.'
+                                            : 'Chat with ${otherParticipant.fullName.split(' ').first} opens after the protected thread is ready.',
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.chat_bubble_outline_rounded,
+                                    ),
+                                    label: Text(
+                                      chatLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              if (showChat &&
+                                  helperCanVolunteer &&
+                                  !alreadyMatchedAsHelper)
+                                const SizedBox(width: 10),
+                              if (helperCanVolunteer && !alreadyMatchedAsHelper)
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    onPressed: () async {
+                                      final matched = await appState
+                                          .volunteerForHelpRequest(request.id);
+                                      if (!context.mounted) {
+                                        return;
+                                      }
 
-                            showGhmeraSnackBar(
-                              context,
-                              message: otherParticipant == null
-                                  ? 'Chat opens after a helper match is confirmed.'
-                                  : 'Chat with ${otherParticipant.fullName.split(' ').first} opens after the protected thread is ready.',
-                            );
-                          },
-                          icon: const Icon(Icons.chat_bubble_outline_rounded),
-                          label: Text(chatLabel),
-                          style: chatActionButtonStyle,
-                        ),
-                      ),
-                      if (helperCanVolunteer) const SizedBox(width: 12),
-                      if (helperCanVolunteer)
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: alreadyMatchedAsHelper
-                                ? null
-                                : () async {
-                                    final matched = await appState
-                                        .volunteerForHelpRequest(request.id);
-                                    if (!context.mounted) {
-                                      return;
-                                    }
+                                      if (!matched) {
+                                        showGhmeraSnackBar(
+                                          context,
+                                          message:
+                                              appState.lastWorkflowError ??
+                                              'This request is no longer available for matching.',
+                                          type: SnackBarType.error,
+                                        );
+                                        return;
+                                      }
 
-                                    if (!matched) {
                                       showGhmeraSnackBar(
                                         context,
                                         message:
-                                            'This request is no longer available for matching.',
-                                        type: SnackBarType.error,
+                                            'You are now helping. Protected chat is open.',
+                                        type: SnackBarType.success,
                                       );
-                                      return;
-                                    }
-
-                                    showGhmeraSnackBar(
-                                      context,
-                                      message:
-                                          'Match confirmed. Protected chat is now available.',
-                                      type: SnackBarType.success,
-                                    );
-                                  },
-                            icon: const Icon(Icons.volunteer_activism_outlined),
-                            label: Text(
-                              alreadyMatchedAsHelper ? 'Matched' : 'I can help',
+                                    },
+                                    icon: const Icon(
+                                      Icons.volunteer_activism_rounded,
+                                    ),
+                                    label: const Text('I can help'),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        if (isParticipant &&
+                            request.acceptedHelperId != null) ...[
+                          if (canStartRequest) ...[
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => _handleStartRequestWork(
+                                  context,
+                                  appState,
+                                  request,
+                                ),
+                                icon: const Icon(
+                                  Icons.play_circle_outline_rounded,
+                                ),
+                                label: const Text('Mark help as in progress'),
+                              ),
                             ),
-                            style: helpActionButtonStyle,
+                          ],
+                          if (canConfirmCompletion) ...[
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: () => _handleConfirmCompletion(
+                                  context,
+                                  appState,
+                                  request,
+                                ),
+                                icon: const Icon(Icons.task_alt_rounded),
+                                label: Text(
+                                  request.requesterId == appState.currentUserId
+                                      ? 'Confirm help received'
+                                      : 'Confirm help given',
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (canSubmitReview && otherParticipant != null) ...[
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.tonalIcon(
+                                onPressed: () => _openReviewSheet(
+                                  context,
+                                  request: request,
+                                  reviewee: otherParticipant,
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: GhColors.creditSoft,
+                                  foregroundColor: GhColors.creditDeep,
+                                ),
+                                icon: Icon(
+                                  isHelpGiverRating
+                                      ? Icons.star_rate_rounded
+                                      : Icons.rate_review_outlined,
+                                ),
+                                label: Text(
+                                  isHelpGiverRating
+                                      ? 'Rate ${otherParticipant.fullName.split(' ').first}'
+                                      : 'Review ${otherParticipant.fullName.split(' ').first}',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                        if (otherParticipant != null)
+                          TextButton.icon(
+                            onPressed: () => _openSafetyReportSheet(
+                              context,
+                              request: request,
+                              reportedUser: otherParticipant,
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: GhColors.coral,
+                            ),
+                            icon: const Icon(Icons.flag_outlined, size: 18),
+                            label: Text(
+                              'Report ${otherParticipant.fullName.split(' ').first}',
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
-                  if (isParticipant && request.acceptedHelperId != null) ...[
-                    if (canStartRequest) const SizedBox(height: 12),
-                    if (canStartRequest)
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () => _handleStartRequestWork(
-                            context,
-                            appState,
-                            request,
+                        if (!helperCanVolunteer &&
+                            !showChat &&
+                            otherParticipant == null)
+                          Text(
+                            request.requesterId == appState.currentUserId
+                                ? 'Chat unlocks as soon as someone offers to help.'
+                                : 'This request is no longer open.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: GhColors.inkSoft),
                           ),
-                          icon: const Icon(Icons.play_circle_outline_rounded),
-                          label: const Text('Mark help as in progress'),
-                        ),
-                      ),
-                    if (canConfirmCompletion) const SizedBox(height: 12),
-                    if (canConfirmCompletion)
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () => _handleConfirmCompletion(
-                            context,
-                            appState,
-                            request,
-                          ),
-                          icon: const Icon(Icons.task_alt_rounded),
-                          label: const Text('Confirm completion'),
-                        ),
-                      ),
-                    if (canSubmitReview && otherParticipant != null)
-                      const SizedBox(height: 12),
-                    if (canSubmitReview && otherParticipant != null)
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.tonalIcon(
-                          onPressed: () => _openReviewSheet(
-                            context,
-                            request: request,
-                            reviewee: otherParticipant,
-                          ),
-                          icon: Icon(
-                            isHelpGiverRating
-                                ? Icons.star_rate_rounded
-                                : Icons.rate_review_outlined,
-                          ),
-                          label: Text(
-                            isHelpGiverRating
-                                ? 'Rate ${otherParticipant.fullName.split(' ').first}'
-                                : 'Leave a review for ${otherParticipant.fullName.split(' ').first}',
-                          ),
-                        ),
-                      ),
-                  ],
-                  if (otherParticipant != null) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () => _openSafetyReportSheet(
-                          context,
-                          request: request,
-                          reportedUser: otherParticipant,
-                        ),
-                        icon: const Icon(Icons.report_problem_outlined),
-                        label: Text(
-                          'Report ${otherParticipant.fullName.split(' ').first}',
-                        ),
-                      ),
+                      ],
                     ),
-                  ],
-                ],
+                  ),
+                ),
               ),
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (value.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: GhColors.inkFaint),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: GhColors.inkSoft,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: valueColor ?? GhColors.ink,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PersonStatsCard extends StatelessWidget {
+  const _PersonStatsCard({
+    required this.title,
+    required this.user,
+    required this.stats,
+  });
+
+  final String title;
+  final UserEntity user;
+  final UserHelpStats stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isVerified = user.idVerified || user.trustedHelper;
+    return GhCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: GhColors.inkFaint,
+              letterSpacing: 1.1,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              GhAvatar(
+                name: user.fullName,
+                photo: user.profilePhoto,
+                size: 52,
+                showVerified: isVerified,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user.fullName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        GhRatingStars(rating: stats.averageRating, size: 16),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            stats.reviewCount == 0
+                                ? 'No ratings yet'
+                                : '${stats.averageRating.toStringAsFixed(1)} · ${stats.reviewCount} ${stats.reviewCount == 1 ? 'rating' : 'ratings'}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          GhHelpStatsStrip(stats: stats, compact: false),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              GhTag(
+                icon: stats.helpsGiven >= stats.helpsReceived
+                    ? Icons.trending_up_rounded
+                    : Icons.balance_rounded,
+                label: stats.giveBackLabel,
+                foreground: GhColors.brandDark,
+                background: GhColors.brandSoft,
+              ),
+              for (final badge in user.verificationBadges)
+                GhTag(
+                  icon: Icons.verified_outlined,
+                  label: badge.label,
+                  foreground: GhColors.sky,
+                  background: GhColors.skySoft,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RequestCreditNote extends StatelessWidget {
+  const _RequestCreditNote({
+    required this.request,
+    required this.isRequester,
+    required this.isCurrentUserHelper,
+    required this.requesterFirstName,
+  });
+
+  final HelpRequestEntity request;
+  final bool isRequester;
+  final bool isCurrentUserHelper;
+  final String requesterFirstName;
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = request.status == HelpRequestStatus.completed;
+    final canceled = request.status == HelpRequestStatus.canceled;
+    final String message;
+    if (isCreditFreeRequest(request)) {
+      message = 'Emergency requests are free. No credits are used.';
+    } else if (isRequester) {
+      message = completed
+          ? '$requestCreditCost credits were used when this help was completed: $askCreditCost for asking and $receiveCreditCost for receiving help.'
+          : canceled
+          ? 'This request was canceled, so both held credits were returned to you.'
+          : '$requestCreditCost credits are on hold for this request: $askCreditCost for asking and $receiveCreditCost for receiving help. Both are used once you confirm the help is done, or returned if you cancel.';
+    } else if (isCurrentUserHelper) {
+      message = completed
+          ? 'You earned $helpEarnedCredits credit for this help. Thank you!'
+          : 'You will earn $helpEarnedCredits credit once you and $requesterFirstName both confirm the help is done.';
+    } else {
+      message =
+          'Help $requesterFirstName and earn $helpEarnedCredits credit once you both confirm the help is done.';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: GhColors.creditSoft,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          const GhCoin(size: 32),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: GhColors.creditDeep,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConfirmationRow extends StatelessWidget {
+  const _ConfirmationRow({required this.label, required this.done});
+
+  final String label;
+  final bool done;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          done ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+          size: 22,
+          color: done ? GhColors.brand : const Color(0xFFC3CECB),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: done ? GhColors.ink : GhColors.inkSoft,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TimelineEntryRow extends StatelessWidget {
+  const _TimelineEntryRow({
+    required this.title,
+    required this.caption,
+    required this.isFirst,
+    required this.isLast,
+  });
+
+  final String title;
+  final String caption;
+  final bool isFirst;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 20,
+            child: Column(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  margin: const EdgeInsets.only(top: 4),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isFirst ? GhColors.brand : GhColors.surface,
+                    border: Border.all(
+                      color: isFirst ? GhColors.brand : const Color(0xFFC3CECB),
+                      width: 2,
+                    ),
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      color: GhColors.line,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 2),
+                  Text(caption, style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2369,7 +2735,7 @@ class _ReviewSubmissionSheetState extends State<_ReviewSubmissionSheet> {
             Text(
               'These scores update trust and review metrics immediately.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF61726F),
+                color: GhColors.inkSoft,
                 height: 1.45,
               ),
             ),
@@ -2520,7 +2886,7 @@ class _HelpGiverRatingSheetState extends State<_HelpGiverRatingSheet> {
             Text(
               'Select up to 5 stars for the help giver. This rating updates their average review immediately.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF61726F),
+                color: GhColors.inkSoft,
                 height: 1.45,
               ),
             ),
@@ -2551,9 +2917,9 @@ class _HelpGiverRatingSheetState extends State<_HelpGiverRatingSheet> {
                 _selectedRating == 0
                     ? 'Tap a star to save the rating.'
                     : '$_selectedRating / 5 stars selected',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF61726F),
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: GhColors.inkSoft),
               ),
             ),
             const SizedBox(height: 18),
@@ -2648,9 +3014,9 @@ class _AccountReportSheetState extends State<_AccountReportSheet> {
             Text(
               widget.request == null
                   ? 'This sends an account report to moderators.'
-                  : 'This sends an account report linked to ${widget.request!.title}.',
+                  : 'This sends an account report linked to ${widget.request!.displayTitle}.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF61726F),
+                color: GhColors.inkSoft,
                 height: 1.45,
               ),
             ),
@@ -2779,7 +3145,7 @@ class _SafetyReportSheetState extends State<_SafetyReportSheet> {
             Text(
               'This creates a moderator-visible safety report and updates safety signals immediately.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF61726F),
+                color: GhColors.inkSoft,
                 height: 1.45,
               ),
             ),
@@ -2890,7 +3256,9 @@ class _NotificationsScreen extends StatelessWidget {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(GhRadius.sheet),
+        ),
       ),
       builder: (sheetContext) {
         return SafeArea(
@@ -2908,7 +3276,7 @@ class _NotificationsScreen extends StatelessWidget {
                     style: Theme.of(sheetContext).textTheme.titleSmall
                         ?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: const Color(0xFF103B36),
+                          color: GhColors.brandDark,
                         ),
                   ),
                 ),
@@ -2916,15 +3284,15 @@ class _NotificationsScreen extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
                   child: Text(
                     'This will remove all notifications from your list. This action cannot be undone.',
-                    style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF61726F),
-                    ),
+                    style: Theme.of(
+                      sheetContext,
+                    ).textTheme.bodySmall?.copyWith(color: GhColors.inkSoft),
                   ),
                 ),
                 _MenuSheetActionTile(
                   icon: Icons.delete_sweep_outlined,
                   label: 'Clear all notifications',
-                  foregroundColor: const Color(0xFF9A2F2F),
+                  foregroundColor: GhColors.coral,
                   onTap: () => Navigator.of(sheetContext).pop(true),
                 ),
               ],
@@ -2952,7 +3320,9 @@ class _NotificationsScreen extends StatelessWidget {
     final action = await showModalBottomSheet<_NotificationAction>(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(GhRadius.sheet),
+        ),
       ),
       builder: (sheetContext) {
         return SafeArea(
@@ -2972,7 +3342,7 @@ class _NotificationsScreen extends StatelessWidget {
                     style: Theme.of(sheetContext).textTheme.titleSmall
                         ?.copyWith(
                           fontWeight: FontWeight.w800,
-                          color: const Color(0xFF103B36),
+                          color: GhColors.brandDark,
                         ),
                   ),
                 ),
@@ -2980,9 +3350,9 @@ class _NotificationsScreen extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
                   child: Text(
                     'Received ${_relativeTime(notification.createdAt)}',
-                    style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF61726F),
-                    ),
+                    style: Theme.of(
+                      sheetContext,
+                    ).textTheme.bodySmall?.copyWith(color: GhColors.inkSoft),
                   ),
                 ),
                 if (!notification.isRead)
@@ -3004,7 +3374,7 @@ class _NotificationsScreen extends StatelessWidget {
                 _MenuSheetActionTile(
                   icon: Icons.delete_outline_rounded,
                   label: 'Delete notification',
-                  foregroundColor: const Color(0xFF9A2F2F),
+                  foregroundColor: GhColors.coral,
                   onTap: () => Navigator.of(
                     sheetContext,
                   ).pop(_NotificationAction.delete),
@@ -3048,11 +3418,14 @@ class _NotificationsScreen extends StatelessWidget {
           appBar: AppBar(
             automaticallyImplyLeading: false,
             centerTitle: false,
+            titleSpacing: 0,
             leading: uniformBackButton(context),
             title: uniformAppBarTitle(
               context,
               title: 'Notifications',
-              subtitle: 'Matches, safety alerts, and key reminders.',
+              subtitle: notifications.isEmpty
+                  ? 'You are all caught up.'
+                  : '${notifications.length} ${notifications.length == 1 ? 'update' : 'updates'}',
             ),
             actions: [
               if (notifications.isNotEmpty)
@@ -3062,25 +3435,20 @@ class _NotificationsScreen extends StatelessWidget {
                       _confirmClearAllNotifications(context, appState),
                   icon: const Icon(Icons.delete_sweep_outlined),
                 ),
+              const SizedBox(width: 6),
             ],
           ),
           body: SafeArea(
+            top: false,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(10, 12, 10, 28),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
               children: [
-                Text(
-                  'Matches, messages, safety alerts, reciprocity warnings, and wellbeing reminders land here.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF61726F),
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 18),
                 if (notifications.isEmpty)
-                  const _EmptyStateCard(
+                  const GhEmptyState(
+                    icon: Icons.notifications_none_rounded,
                     title: 'No notifications yet',
                     message:
-                        'New alerts for matches, chat, safety, and requests will appear here.',
+                        'Matches, messages, credits, and safety updates will appear here.',
                   )
                 else
                   for (final notification in notifications)
@@ -3131,94 +3499,79 @@ class _OverviewTab extends StatelessWidget {
         })
         .whereType<_RequestLocationEntry>()
         .toList();
+    final credits = appState.currentUserCredits;
+    final myStats = appState.helpStatsForUser(appState.currentUserId);
 
-    return Column(
-      children: [
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: () =>
-                context.read<GhmeraAppState>().refreshHelpRequests(),
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
-              children: [
-                const _SectionHeader(
-                  title: 'You accepted these requests',
-                  subtitle:
-                      'People requests you have already accepted to help with.',
-                ),
-                const SizedBox(height: 10),
-                if (acceptedRequests.isNotEmpty)
-                  for (final request in acceptedRequests)
-                    _OpportunityCard(
-                      request: request,
-                      onLongPress: onRequestLongPress,
-                      onReviewRequest: onReviewOpportunity,
-                    ),
-                if (acceptedRequests.isEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: Text(
-                      'No help requested yet.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF61726F),
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 14),
-                const _SectionHeader(
-                  title: 'Help requests',
-                  subtitle:
-                      'Remaining people requests you have not accepted yet.',
-                ),
-                const SizedBox(height: 10),
-                if (pendingHelpRequests.isEmpty)
-                  const _EmptyStateCard(
-                    title: 'No help requests waiting',
-                    message:
-                        'New requests that match your help profile will appear here.',
-                  )
-                else
-                  for (final request in pendingHelpRequests)
-                    _OpportunityCard(
-                      request: request,
-                      onLongPress: onRequestLongPress,
-                      onReviewRequest: onReviewOpportunity,
-                    ),
-              ],
-            ),
+    return RefreshIndicator(
+      onRefresh: () => context.read<GhmeraAppState>().refreshHelpRequests(),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+        children: [
+          _GiveHelpHero(
+            waitingCount: pendingHelpRequests.length,
+            availableCredits: credits.available,
+            helpsGiven: myStats.helpsGiven,
+            onTapCredits: () => showHelpCreditsSheet(context),
           ),
-        ),
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 12),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: FloatingActionButton.extended(
-                heroTag: 'giveHelpRequestLocationsFab',
-                onPressed: () => _showRequestLocationsMapSheet(
-                  context,
-                  currentUser: appState.currentUser,
-                  requestEntries: requestLocationEntries,
-                ),
-                backgroundColor: const Color(0xFF163C38),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                icon: const Icon(Icons.map_outlined),
-                label: const Text('Request locations'),
+          if (acceptedRequests.isNotEmpty) ...[
+            const SizedBox(height: 22),
+            GhSectionHeader(
+              title: 'You are helping',
+              subtitle: 'People counting on you right now.',
+              count: acceptedRequests.length,
+            ),
+            for (final request in acceptedRequests)
+              _CommunityRequestCard(
+                request: request,
+                isAcceptedByMe: true,
+                onTap: () => onReviewOpportunity(request),
+                onLongPress: () => onRequestLongPress(request),
               ),
+          ],
+          const SizedBox(height: 22),
+          GhSectionHeader(
+            title: 'People who need help',
+            subtitle: pendingHelpRequests.isEmpty
+                ? null
+                : 'Tap a request to see who is asking.',
+            count: pendingHelpRequests.isEmpty
+                ? null
+                : pendingHelpRequests.length,
+            trailing: OutlinedButton.icon(
+              onPressed: () => _showRequestLocationsMapSheet(
+                context,
+                currentUser: appState.currentUser,
+                requestEntries: requestLocationEntries,
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 38),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                textStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              icon: const Icon(Icons.map_outlined, size: 18),
+              label: const Text('Map'),
             ),
           ),
-        ),
-      ],
+          if (pendingHelpRequests.isEmpty)
+            const GhEmptyState(
+              icon: Icons.spa_outlined,
+              title: 'All caught up',
+              message:
+                  'No one nearby needs help right now. New requests that match what you offer will appear here.',
+            )
+          else
+            for (final request in pendingHelpRequests)
+              _CommunityRequestCard(
+                request: request,
+                onTap: () => onReviewOpportunity(request),
+                onLongPress: () => onRequestLongPress(request),
+              ),
+        ],
+      ),
     );
   }
 
@@ -3234,9 +3587,6 @@ class _OverviewTab extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       backgroundColor: Theme.of(context).colorScheme.surface,
       enableDrag: false,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (context) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.78,
@@ -3254,107 +3604,476 @@ class _OverviewTab extends StatelessWidget {
   }
 }
 
+class _GiveHelpHero extends StatelessWidget {
+  const _GiveHelpHero({
+    required this.waitingCount,
+    required this.availableCredits,
+    required this.helpsGiven,
+    required this.onTapCredits,
+  });
+
+  final int waitingCount;
+  final int availableCredits;
+  final int helpsGiven;
+  final VoidCallback onTapCredits;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final headline = waitingCount == 0
+        ? 'Your community is doing well'
+        : waitingCount == 1
+        ? '1 person needs a hand'
+        : '$waitingCount people need a hand';
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: ghBrandGradient,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x330F6B5C),
+            blurRadius: 28,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  headline,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: Colors.white,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              GhCreditChip(
+                credits: availableCredits < 0 ? 0 : availableCredits,
+                onTap: onTapCredits,
+                onDark: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Every help you complete earns you $helpEarnedCredits credit to use when you need support.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _HeroStat(
+                icon: Icons.volunteer_activism_rounded,
+                value: '$helpsGiven',
+                label: helpsGiven == 1 ? 'person helped' : 'people helped',
+              ),
+              const SizedBox(width: 10),
+              _HeroStat(
+                icon: Icons.add_circle_outline_rounded,
+                value: '+$helpEarnedCredits',
+                label: 'credit per help',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroStat extends StatelessWidget {
+  const _HeroStat({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: GhColors.mint, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.75),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CommunityRequestCard extends StatelessWidget {
+  const _CommunityRequestCard({
+    required this.request,
+    required this.onTap,
+    required this.onLongPress,
+    this.isAcceptedByMe = false,
+  });
+
+  final HelpRequestEntity request;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final bool isAcceptedByMe;
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<GhmeraAppState>();
+    final requester = appState.userById(request.requesterId);
+    final stats = appState.helpStatsForUser(requester.id);
+    final theme = Theme.of(context);
+    final categoryStyle = GhCategoryStyle.of(request.category);
+    final urgencyColor = ghUrgencyColor(request.urgency);
+    final statusColor = ghStatusColor(request.status);
+    final location = request.location.trim();
+
+    return GhCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              GhAvatar(
+                name: requester.fullName,
+                photo: requester.profilePhoto,
+                size: 44,
+                showVerified: requester.idVerified || requester.trustedHelper,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      requester.fullName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      [
+                        if (location.isNotEmpty) location,
+                        _relativeTime(request.createdAt),
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              isAcceptedByMe
+                  ? GhTag(
+                      dense: true,
+                      label: request.status.label,
+                      foreground: statusColor,
+                      background: statusColor.withValues(alpha: 0.12),
+                    )
+                  : GhTag(
+                      dense: true,
+                      icon: Icons.bolt_rounded,
+                      label: request.urgency.label,
+                      foreground: urgencyColor,
+                      background: urgencyColor.withValues(alpha: 0.12),
+                    ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GhIconBadge(
+                icon: categoryStyle.icon,
+                color: categoryStyle.color,
+                size: 40,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      request.category.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: categoryStyle.color,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      request.displayTitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    if (request.description.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        request.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: GhColors.inkSoft,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          GhHelpStatsStrip(stats: stats),
+          const SizedBox(height: 12),
+          const Divider(),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              if (request.isHighRisk)
+                const GhTag(
+                  dense: true,
+                  icon: Icons.shield_outlined,
+                  label: 'Safety checks',
+                  foreground: GhColors.amber,
+                  background: GhColors.amberSoft,
+                )
+              else if (request.emotionalSupportMode)
+                const GhTag(
+                  dense: true,
+                  icon: Icons.favorite_rounded,
+                  label: 'Listener needed',
+                  foreground: GhColors.rose,
+                  background: GhColors.roseSoft,
+                )
+              else
+                Text(
+                  isAcceptedByMe ? 'Open to continue' : 'View details',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: GhColors.brand,
+                  ),
+                ),
+              const Spacer(),
+              const GhCoin(size: 18),
+              const SizedBox(width: 4),
+              Text(
+                isAcceptedByMe
+                    ? 'Earn +$helpEarnedCredits'
+                    : '+$helpEarnedCredits credit',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: GhColors.creditDeep,
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: GhColors.inkFaint),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RequestsTab extends StatelessWidget {
   const _RequestsTab({
     required this.onCreateRequest,
-    required this.onEditRequest,
     required this.onLongPressMyRequest,
     required this.onManageAcceptedRequest,
+    required this.onOpenRequest,
     required this.onDirectRequestHelper,
+    required this.onFindPeopleToHelp,
   });
 
   final VoidCallback onCreateRequest;
-  final ValueChanged<HelpRequestEntity> onEditRequest;
   final ValueChanged<HelpRequestEntity> onLongPressMyRequest;
   final ValueChanged<HelpRequestEntity> onManageAcceptedRequest;
+  final ValueChanged<HelpRequestEntity> onOpenRequest;
   final ValueChanged<UserEntity> onDirectRequestHelper;
+  final VoidCallback onFindPeopleToHelp;
 
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<GhmeraAppState>();
     final currentUser = appState.currentUser;
     final nearbyHelpers = _nearbyHelpers(appState);
-    final myPastRequests = appState.myRequests.toList()
+    final credits = appState.currentUserCredits;
+    final myRequests = appState.myRequests.toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final acceptedRequests = myPastRequests
+    final matchedRequests = myRequests
         .where(
           (request) =>
               request.acceptedHelperId != null &&
-              request.status != HelpRequestStatus.canceled,
+              request.status != HelpRequestStatus.canceled &&
+              request.status != HelpRequestStatus.completed,
         )
         .toList();
-    final editableRequests = myPastRequests
-        .where((request) => request.acceptedHelperId == null)
+    final waitingRequests = myRequests
+        .where(
+          (request) =>
+              request.acceptedHelperId == null &&
+              request.status != HelpRequestStatus.canceled &&
+              request.status != HelpRequestStatus.completed,
+        )
         .toList();
+    final completedRequests = myRequests
+        .where((request) => request.status == HelpRequestStatus.completed)
+        .toList();
+    final outOfCredits =
+        !credits.canAffordRequest && !currentUser.canBypassReciprocity;
 
     return Column(
       children: [
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
             children: [
-              const _SectionHeader(
-                title: 'Your requests people accepted',
-                subtitle:
-                    'People who already accepted to help with your requests.',
+              CreditWalletCard(
+                summary: credits,
+                message: appState.creditMessage,
+                action: outOfCredits
+                    ? FilledButton.icon(
+                        onPressed: onFindPeopleToHelp,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: GhColors.brandDark,
+                          minimumSize: const Size(double.infinity, 48),
+                        ),
+                        icon: const Icon(Icons.volunteer_activism_rounded),
+                        label: const Text('Find someone to help'),
+                      )
+                    : null,
               ),
-              const SizedBox(height: 10),
-              if (acceptedRequests.isEmpty)
-                const _EmptyStateCard(
-                  title: 'No accepted requests yet',
+              const SizedBox(height: 22),
+              GhSectionHeader(
+                title: 'Matched with a helper',
+                count: matchedRequests.isEmpty ? null : matchedRequests.length,
+              ),
+              if (matchedRequests.isEmpty)
+                const GhEmptyState(
+                  icon: Icons.handshake_outlined,
+                  title: 'No helpers yet',
                   message:
-                      'When someone accepts to help with your request, they will appear here.',
+                      'When someone offers to help with one of your requests, they will appear here.',
                 )
               else
-                for (final request in acceptedRequests)
+                for (final request in matchedRequests)
                   if (appState.helperForRequest(request) case final helper?)
-                    _AcceptedMyRequestTile(
+                    _MatchedRequestCard(
                       request: request,
                       helper: helper,
-                      onTap: () => onManageAcceptedRequest(request),
+                      onTap: () => onOpenRequest(request),
+                      onMore: () => onManageAcceptedRequest(request),
                     ),
-              const SizedBox(height: 14),
-              const _SectionHeader(
-                title: 'Your requests',
-                subtitle: 'Tap a request to view options or edit details.',
+              const SizedBox(height: 22),
+              GhSectionHeader(
+                title: 'Waiting for a helper',
+                subtitle: waitingRequests.isEmpty
+                    ? null
+                    : 'Each open request keeps $requestCreditCost credits on hold: $askCreditCost to ask, $receiveCreditCost to receive.',
+                count: waitingRequests.isEmpty ? null : waitingRequests.length,
               ),
-              const SizedBox(height: 10),
-              if (editableRequests.isEmpty)
-                const _EmptyStateCard(
-                  title: 'No editable requests yet',
-                  message: 'Requests you create will appear here for editing.',
+              if (waitingRequests.isEmpty)
+                GhEmptyState(
+                  icon: Icons.campaign_outlined,
+                  title: 'No open requests',
+                  message:
+                      'Post what you need and nearby helpers who offer that kind of help will be notified.',
+                  actionLabel: outOfCredits ? null : 'Ask for help',
+                  onAction: outOfCredits ? null : onCreateRequest,
                 )
               else
-                for (final request in editableRequests)
-                  _MyRequestTile(
+                for (final request in waitingRequests)
+                  _MyRequestCard(
                     request: request,
-                    onLongPress: () => onLongPressMyRequest(request),
                     onTap: () => onLongPressMyRequest(request),
                   ),
+              if (completedRequests.isNotEmpty) ...[
+                const SizedBox(height: 22),
+                GhSectionHeader(
+                  title: 'Completed',
+                  count: completedRequests.length,
+                ),
+                for (final request in completedRequests)
+                  if (appState.helperForRequest(request) case final helper?)
+                    _MatchedRequestCard(
+                      request: request,
+                      helper: helper,
+                      onTap: () => onOpenRequest(request),
+                    ),
+              ],
             ],
           ),
         ),
-        SafeArea(
-          top: false,
+        DecoratedBox(
+          decoration: const BoxDecoration(
+            color: GhColors.surface,
+            border: Border(top: BorderSide(color: GhColors.line)),
+          ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 12),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             child: Row(
               children: [
                 Expanded(
+                  flex: 3,
                   child: FilledButton.icon(
                     onPressed: onCreateRequest,
-                    icon: const Icon(Icons.add_circle_outline_rounded),
+                    icon: const Icon(Icons.add_rounded),
                     label: const Text('New request'),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
+                  flex: 2,
                   child: OutlinedButton.icon(
                     onPressed: () => _showNeighborhoodHelpersMapSheet(
                       context,
@@ -3362,14 +4081,8 @@ class _RequestsTab extends StatelessWidget {
                       helpers: nearbyHelpers,
                       onSelectHelper: onDirectRequestHelper,
                     ),
-                    icon: const Icon(Icons.map_outlined),
-                    label: const Text('Nearby helpers'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
+                    icon: const Icon(Icons.near_me_outlined),
+                    label: const Text('Nearby'),
                   ),
                 ),
               ],
@@ -3393,9 +4106,6 @@ class _RequestsTab extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       backgroundColor: Theme.of(context).colorScheme.surface,
       enableDrag: false,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (context) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.78,
@@ -3497,6 +4207,223 @@ class _RequestsTab extends StatelessWidget {
 
   String _normalizeLocation(String value) {
     return value.trim().toLowerCase();
+  }
+}
+
+class _MatchedRequestCard extends StatelessWidget {
+  const _MatchedRequestCard({
+    required this.request,
+    required this.helper,
+    required this.onTap,
+    this.onMore,
+  });
+
+  final HelpRequestEntity request;
+  final UserEntity helper;
+  final VoidCallback onTap;
+  final VoidCallback? onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<GhmeraAppState>();
+    final stats = appState.helpStatsForUser(helper.id);
+    final theme = Theme.of(context);
+    final statusColor = ghStatusColor(request.status);
+    final isCompleted = request.status == HelpRequestStatus.completed;
+
+    return GhCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+      onTap: onTap,
+      onLongPress: onMore,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              GhAvatar(
+                name: helper.fullName,
+                photo: helper.profilePhoto,
+                size: 44,
+                showVerified: helper.idVerified || helper.trustedHelper,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      helper.fullName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    Text(
+                      isCompleted ? 'Helped you' : 'Is helping you',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              GhTag(
+                dense: true,
+                label: request.status.label,
+                foreground: statusColor,
+                background: statusColor.withValues(alpha: 0.12),
+              ),
+              if (onMore != null)
+                IconButton(
+                  tooltip: 'Request actions',
+                  onPressed: onMore,
+                  icon: const Icon(Icons.more_horiz_rounded),
+                )
+              else
+                const SizedBox(width: 8),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(
+              request.displayTitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
+          const SizedBox(height: 10),
+          GhHelpStatsStrip(stats: stats),
+          if (!isCompleted) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                GhTag(
+                  dense: true,
+                  icon: request.requesterCompletionConfirmed
+                      ? Icons.check_circle_rounded
+                      : Icons.radio_button_unchecked,
+                  label: request.requesterCompletionConfirmed
+                      ? 'You confirmed'
+                      : 'Your confirmation pending',
+                  foreground: request.requesterCompletionConfirmed
+                      ? GhColors.brand
+                      : GhColors.inkSoft,
+                ),
+                GhTag(
+                  dense: true,
+                  icon: request.helperCompletionConfirmed
+                      ? Icons.check_circle_rounded
+                      : Icons.radio_button_unchecked,
+                  label: request.helperCompletionConfirmed
+                      ? 'Helper confirmed'
+                      : 'Helper pending',
+                  foreground: request.helperCompletionConfirmed
+                      ? GhColors.brand
+                      : GhColors.inkSoft,
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MyRequestCard extends StatelessWidget {
+  const _MyRequestCard({required this.request, required this.onTap});
+
+  final HelpRequestEntity request;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final categoryStyle = GhCategoryStyle.of(request.category);
+    final statusColor = ghStatusColor(request.status);
+    final urgencyColor = ghUrgencyColor(request.urgency);
+    final isFree = isCreditFreeRequest(request);
+
+    return GhCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+      onTap: onTap,
+      onLongPress: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GhIconBadge(
+                icon: categoryStyle.icon,
+                color: categoryStyle.color,
+                size: 42,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      request.displayTitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${request.category.label} · ${_relativeTime(request.createdAt)}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Request actions',
+                onPressed: onTap,
+                icon: const Icon(Icons.more_horiz_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              GhTag(
+                dense: true,
+                label: request.status == HelpRequestStatus.matching
+                    ? 'Finding helpers'
+                    : request.status.label,
+                foreground: statusColor,
+                background: statusColor.withValues(alpha: 0.12),
+              ),
+              GhTag(
+                dense: true,
+                icon: Icons.bolt_rounded,
+                label: '${request.urgency.label} urgency',
+                foreground: urgencyColor,
+                background: urgencyColor.withValues(alpha: 0.12),
+              ),
+              GhTag(
+                dense: true,
+                icon: isFree
+                    ? Icons.emergency_outlined
+                    : Icons.hourglass_top_rounded,
+                label: isFree
+                    ? 'Free emergency request'
+                    : '$requestCreditCost credits on hold',
+                foreground: isFree ? GhColors.coral : GhColors.creditDeep,
+                background: isFree ? GhColors.coralSoft : GhColors.creditSoft,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -3611,7 +4538,7 @@ class _NeighborhoodHelpersMapSheetState
         } else {
           children.addAll([
             ClipRRect(
-              borderRadius: BorderRadius.circular(5),
+              borderRadius: BorderRadius.circular(14),
               child: SizedBox(
                 height: 320,
                 child: FlutterMap(
@@ -3660,7 +4587,7 @@ class _NeighborhoodHelpersMapSheetState
             Text(
               'Approximate locations only. Map data © OpenStreetMap contributors.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF61726F),
+                color: GhColors.inkSoft,
               ),
             ),
             const SizedBox(height: 12),
@@ -3885,7 +4812,7 @@ class _CurrentNeighborhoodMarker extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             color: const Color(0xFF163C38),
-            borderRadius: BorderRadius.circular(5),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: const Text(
             'You',
@@ -3935,7 +4862,7 @@ class _NeighborhoodHelperMapMarker extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: theme.colorScheme.primary,
-                borderRadius: BorderRadius.circular(5),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
                 firstName,
@@ -3977,7 +4904,7 @@ class _NeighborhoodHelperListTile extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: const <BoxShadow>[
           BoxShadow(
             color: Color(0x10000000),
@@ -4009,7 +4936,7 @@ class _NeighborhoodHelperListTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF61726F),
+                color: GhColors.inkSoft,
               ),
             ),
             if (distanceLabel != null)
@@ -4018,7 +4945,7 @@ class _NeighborhoodHelperListTile extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF61726F),
+                  color: GhColors.inkSoft,
                 ),
               ),
           ],
@@ -4035,7 +4962,7 @@ class _NeighborhoodHelperListTile extends StatelessWidget {
             Text(
               'Trust',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF61726F),
+                color: GhColors.inkSoft,
               ),
             ),
           ],
@@ -4162,7 +5089,7 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
         } else {
           children.addAll([
             ClipRRect(
-              borderRadius: BorderRadius.circular(5),
+              borderRadius: BorderRadius.circular(14),
               child: SizedBox(
                 height: 320,
                 child: FlutterMap(
@@ -4211,7 +5138,7 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
             Text(
               'Approximate locations only. Map data © OpenStreetMap contributors.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF61726F),
+                color: GhColors.inkSoft,
               ),
             ),
             const SizedBox(height: 12),
@@ -4446,8 +5373,8 @@ class _RequestLocationMapMarker extends StatelessWidget {
       onTap: onTap,
       child: Tooltip(
         message: distanceLabel == null
-            ? '${marker.request.title}\n${marker.requester.fullName}\n${marker.locationLabel}'
-            : '${marker.request.title}\n${marker.requester.fullName}\n${marker.locationLabel}\n$distanceLabel',
+            ? '${marker.request.displayTitle}\n${marker.requester.fullName}\n${marker.locationLabel}'
+            : '${marker.request.displayTitle}\n${marker.requester.fullName}\n${marker.locationLabel}\n$distanceLabel',
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -4455,7 +5382,7 @@ class _RequestLocationMapMarker extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: theme.colorScheme.primary,
-                borderRadius: BorderRadius.circular(5),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
                 firstName,
@@ -4493,7 +5420,7 @@ class _RequestLocationListTile extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: const <BoxShadow>[
           BoxShadow(
             color: Color(0x10000000),
@@ -4509,7 +5436,7 @@ class _RequestLocationListTile extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         leading: _RequesterAvatar(requester: marker.requester, size: 56),
         title: Text(
-          marker.request.title,
+          marker.request.displayTitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.titleMedium?.copyWith(
@@ -4525,7 +5452,7 @@ class _RequestLocationListTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF61726F),
+                color: GhColors.inkSoft,
               ),
             ),
             if (distanceLabel != null)
@@ -4534,7 +5461,7 @@ class _RequestLocationListTile extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF61726F),
+                  color: GhColors.inkSoft,
                 ),
               ),
           ],
@@ -4551,7 +5478,7 @@ class _RequestLocationListTile extends StatelessWidget {
             Text(
               'Urgency',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF61726F),
+                color: GhColors.inkSoft,
               ),
             ),
           ],
@@ -4657,7 +5584,7 @@ class _HiddenRequestsScreen extends StatelessWidget {
                 Text(
                   'Hidden requests stay here until you restore them. Tap a request to open it, or use the restore button to bring it back to your requests screen.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF61726F),
+                    color: GhColors.inkSoft,
                     height: 1.45,
                   ),
                 ),
@@ -4691,7 +5618,7 @@ class _HiddenRequestsScreen extends StatelessWidget {
                         showGhmeraSnackBar(
                           context,
                           message:
-                              '${request.title} restored to your requests.',
+                              '${request.displayTitle} restored to your requests.',
                         );
                       },
                     ),
@@ -4715,39 +5642,21 @@ class _MessagesTab extends StatelessWidget {
     final threads = appState.messageThreads;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(10, 12, 10, 28),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
       children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5F1E8),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Protected messaging',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Chats stay in-app first. Phone numbers, emails, and exact location details stay hidden until match acceptance and explicit consent.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF5C6A67),
-                  height: 1.45,
-                ),
-              ),
-            ],
-          ),
+        const GhInfoBanner(
+          icon: Icons.shield_outlined,
+          title: 'Protected messaging',
+          message:
+              'Chats stay inside Ghmera. Phone numbers, emails, and exact locations stay hidden until you both agree to share them.',
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
         if (threads.isEmpty)
-          const _EmptyStateCard(
-            title: 'No message threads yet',
-            message: 'Accepted matches and message requests will appear here.',
+          const GhEmptyState(
+            icon: Icons.chat_bubble_outline_rounded,
+            title: 'No conversations yet',
+            message:
+                'When you match with someone, your private chat will appear here.',
           )
         else
           for (final thread in threads)
@@ -4765,39 +5674,38 @@ class _SafetyTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<GhmeraAppState>();
+    final theme = Theme.of(context);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(10, 12, 10, 28),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
       children: [
         Container(
-          padding: const EdgeInsets.all(22),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFF103B36),
-            borderRadius: BorderRadius.circular(5),
+            gradient: ghBrandGradient,
+            borderRadius: BorderRadius.circular(24),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Trust, safety, and wellbeing',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                style: theme.textTheme.titleLarge?.copyWith(
                   color: Colors.white,
-                  fontWeight: FontWeight.w800,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
                 'Ghmera is not a therapy or emergency medical platform. It uses peer support, crisis routing, moderation, and high-risk controls to protect both sides of each interaction.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.82),
-                  height: 1.45,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.85),
                 ),
               ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: const [
+              const SizedBox(height: 14),
+              const Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
                   _HeroPill(
                     icon: Icons.warning_amber_rounded,
                     label: 'Crisis prompts',
@@ -4815,18 +5723,18 @@ class _SafetyTab extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 18),
-        _SectionHeader(
+        const SizedBox(height: 22),
+        const GhSectionHeader(
           title: 'High-risk interactions',
           subtitle:
-              'Childcare, elderly support, money-related requests, home visits, and late-night support receive stronger controls.',
+              'Childcare, elderly support, money, home visits, and late-night support get stronger controls.',
         ),
-        const SizedBox(height: 10),
         if (appState.highRiskRequests.isEmpty)
-          const _EmptyStateCard(
+          const GhEmptyState(
+            icon: Icons.health_and_safety_outlined,
             title: 'No high-risk requests are active',
             message:
-                'High-risk requests would appear here with stronger check-in and moderation prompts.',
+                'High-risk requests appear here with stronger check-in and moderation prompts.',
           )
         else
           for (final request in appState.highRiskRequests)
@@ -4837,32 +5745,33 @@ class _SafetyTab extends StatelessWidget {
               leadingLabel: 'Safety review required',
               onTap: () => onReviewRequest(request),
             ),
-        const SizedBox(height: 18),
-        _SectionHeader(
+        const SizedBox(height: 22),
+        const GhSectionHeader(
           title: 'Moderation queue',
-          subtitle:
-              'Admin and moderator workflows for reports, disputes, and harmful behavior.',
+          subtitle: 'Reports, disputes, and harmful behavior under review.',
         ),
-        const SizedBox(height: 10),
-        for (final report in appState.moderationQueue)
-          _ReportCard(report: report),
-        const SizedBox(height: 18),
-        _SectionHeader(
-          title: 'Admin dashboard preview',
-          subtitle:
-              'Core health metrics that support moderation, fairness, and product monitoring.',
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
+        if (appState.moderationQueue.isEmpty)
+          const GhEmptyState(
+            icon: Icons.verified_user_outlined,
+            title: 'Nothing to review',
+            message: 'Open reports will appear here.',
+          )
+        else
+          for (final report in appState.moderationQueue)
+            _ReportCard(report: report),
+        const SizedBox(height: 22),
+        const GhSectionHeader(title: 'Community health'),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1.9,
           children: [
+            _AdminMetricCard(label: 'Members', value: '${appState.totalUsers}'),
             _AdminMetricCard(
-              label: 'Total users',
-              value: '${appState.totalUsers}',
-            ),
-            _AdminMetricCard(
-              label: 'Daily active',
+              label: 'Active today',
               value: '${appState.dailyActiveUsers}',
             ),
             _AdminMetricCard(
@@ -4878,50 +5787,30 @@ class _SafetyTab extends StatelessWidget {
               value: '${appState.reportsCount}',
             ),
             _AdminMetricCard(
-              label: 'High-risk interactions',
+              label: 'High-risk',
               value: '${appState.highRiskInteractionCount}',
-            ),
-            _AdminMetricCard(
-              label: 'Emotional support usage',
-              value: '${appState.emotionalSupportUsageCount}',
-            ),
-            _AdminMetricCard(
-              label: 'Help ratio',
-              value: appState.currentUserHelpRatio.toStringAsFixed(1),
             ),
           ],
         ),
-        const SizedBox(height: 18),
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(5),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Color(0x10000000),
-                blurRadius: 24,
-                offset: Offset(0, 12),
-              ),
-            ],
-          ),
+        const SizedBox(height: 22),
+        const GhCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+            children: [
               _SafetyFeatureRow(
                 icon: Icons.notification_important_outlined,
                 title: 'Emergency features',
                 text:
-                    'Panic button prompts, “I feel unsafe” paths, trusted-contact sharing, and safety check-ins.',
+                    'Panic prompts, “I feel unsafe” paths, trusted-contact sharing, and safety check-ins.',
               ),
-              SizedBox(height: 12),
+              SizedBox(height: 14),
               _SafetyFeatureRow(
                 icon: Icons.favorite_border_rounded,
-                title: 'Depression and emotional support',
+                title: 'Emotional support',
                 text:
                     'Daily mood check-ins, peer listener matching, support circles, and crisis resource escalation.',
               ),
-              SizedBox(height: 12),
+              SizedBox(height: 14),
               _SafetyFeatureRow(
                 icon: Icons.public_off_outlined,
                 title: 'Location privacy',
@@ -4936,44 +5825,30 @@ class _SafetyTab extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.subtitle = ''});
+class _BadgedIconButton extends StatelessWidget {
+  const _BadgedIconButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.count = 0,
+  });
 
-  final String title;
-  final String subtitle;
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final hasSubtitle = subtitle.trim().isNotEmpty;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              if (hasSubtitle) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF61726F),
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Badge(
+        isLabelVisible: count > 0,
+        backgroundColor: GhColors.coral,
+        label: Text(count > 99 ? '99+' : '$count'),
+        child: Icon(icon),
+      ),
     );
   }
 }
@@ -4997,307 +5872,86 @@ class _RequestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final requester = appState.userById(request.requesterId);
     final helper = appState.helperForRequest(request);
-    final lastAction = request.actionLog.isNotEmpty
-        ? request.actionLog.last
-        : null;
+    final theme = Theme.of(context);
+    final categoryStyle = GhCategoryStyle.of(request.category);
+    final statusColor = ghStatusColor(request.status);
 
-    return GestureDetector(
+    return GhCard(
+      margin: const EdgeInsets.only(bottom: 12),
       onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(5),
-          boxShadow: const <BoxShadow>[
-            BoxShadow(
-              color: Color(0x10000000),
-              blurRadius: 20,
-              offset: Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (leadingLabel != null) ...[
-              Text(
-                leadingLabel!,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: const Color(0xFF61726F),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        request.title,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w800),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        request.description,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFF5F6F6B),
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _urgencyColor(
-                      request.urgency,
-                    ).withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Text(
-                    request.urgency.label,
-                    style: TextStyle(
-                      color: _urgencyColor(request.urgency),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _Pill(
-                  label: request.category.label,
-                  color: const Color(0xFFE5F1ED),
-                ),
-                _Pill(
-                  label: request.status.label,
-                  color: _statusColor(request.status).withValues(alpha: 0.14),
-                  textColor: _statusColor(request.status),
-                ),
-                _Pill(
-                  label: request.visibility.label,
-                  color: const Color(0xFFF5F1E8),
-                ),
-                if (request.emotionalSupportMode)
-                  const _Pill(
-                    label: 'Emotional support',
-                    color: Color(0xFFFFE8EE),
-                  ),
-                if (request.isHighRisk)
-                  const _Pill(label: 'High risk', color: Color(0xFFFFE9D6)),
-                if (request.safetyCheckInRequired)
-                  const _Pill(
-                    label: 'Safety check-in',
-                    color: Color(0xFFE8F1FF),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.location_on_outlined, size: 18),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text('${request.location} • ${request.preferredTime}'),
-                ),
-              ],
-            ),
-            if (showRequester) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(Icons.person_outline_rounded, size: 18),
-                  const SizedBox(width: 6),
-                  Expanded(child: Text('Requester: ${requester.fullName}')),
-                ],
-              ),
-            ],
-            if (helper != null) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(Icons.handshake_outlined, size: 18),
-                  const SizedBox(width: 6),
-                  Expanded(child: Text('Accepted by ${helper.fullName}')),
-                ],
-              ),
-            ],
-            if (lastAction != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                '${lastAction.action} • ${_relativeTime(lastAction.createdAt)}',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF7A8885)),
-              ),
-            ],
-            if (onTap != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                'Tap to view details',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF61726F),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MyRequestTile extends StatelessWidget {
-  const _MyRequestTile({
-    required this.request,
-    required this.onTap,
-    required this.onLongPress,
-  });
-
-  final HelpRequestEntity request;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE6ECEB)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 16,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ListTile(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        minVerticalPadding: 0,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: const Color(0xFF103B36).withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            Icons.assignment_outlined,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-        ),
-        title: Text(
-          request.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF103B36),
-          ),
-        ),
-        subtitle: Text(
-          '${request.category.label} • ${request.status.label}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF61726F)),
-        ),
-      ),
-    );
-  }
-}
-
-class _AcceptedMyRequestTile extends StatelessWidget {
-  const _AcceptedMyRequestTile({
-    required this.request,
-    required this.helper,
-    required this.onTap,
-  });
-
-  final HelpRequestEntity request;
-  final UserEntity helper;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(5),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x10000000),
-            blurRadius: 20,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ListTile(
-            onTap: onTap,
-            minVerticalPadding: 0,
-            contentPadding: const EdgeInsets.only(
-              left: 4,
-              top: 0,
-              right: 16,
-              bottom: 0,
+          if (leadingLabel != null) ...[
+            GhTag(
+              dense: true,
+              icon: Icons.shield_outlined,
+              label: leadingLabel!,
+              foreground: GhColors.amber,
+              background: GhColors.amberSoft,
             ),
-            leading: _RequesterAvatar(requester: helper, size: 80),
-            title: Padding(
-              padding: const EdgeInsets.only(right: 56),
-              child: Text(
-                helper.fullName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            const SizedBox(height: 12),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GhIconBadge(
+                icon: categoryStyle.icon,
+                color: categoryStyle.color,
+                size: 40,
               ),
-            ),
-            subtitle: Text(
-              request.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF61726F)),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      request.displayTitle,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      request.description,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: GhColors.inkSoft,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          Positioned(
-            top: 8,
-            right: 16,
-            child: IgnorePointer(
-              child: _TrustStars(trustScore: helper.trustScore),
-            ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              GhTag(
+                dense: true,
+                label: request.status.label,
+                foreground: statusColor,
+                background: statusColor.withValues(alpha: 0.12),
+              ),
+              GhTag(
+                dense: true,
+                icon: Icons.place_outlined,
+                label: request.location,
+              ),
+              if (showRequester)
+                GhTag(
+                  dense: true,
+                  icon: Icons.person_outline_rounded,
+                  label: requester.fullName,
+                ),
+              if (helper != null)
+                GhTag(
+                  dense: true,
+                  icon: Icons.handshake_outlined,
+                  label: helper.fullName,
+                ),
+            ],
           ),
         ],
       ),
@@ -5318,155 +5972,46 @@ class _HiddenRequestTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(5),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x10000000),
-            blurRadius: 20,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: ListTile(
-        onTap: onTap,
-        minVerticalPadding: 0,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF1EADF),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: const Icon(Icons.visibility_off_outlined),
-        ),
-        title: Text(
-          request.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-        ),
-        subtitle: Text(
-          '${request.category.label} • ${request.status.label}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF61726F)),
-        ),
-        trailing: IconButton(
-          tooltip: 'Restore request',
-          onPressed: onRestore,
-          icon: const Icon(Icons.visibility_outlined),
-        ),
-      ),
-    );
-  }
-}
-
-class _OpportunityCard extends StatelessWidget {
-  const _OpportunityCard({
-    required this.request,
-    required this.onLongPress,
-    required this.onReviewRequest,
-  });
-
-  final HelpRequestEntity request;
-  final ValueChanged<HelpRequestEntity> onLongPress;
-  final ValueChanged<HelpRequestEntity> onReviewRequest;
-
-  @override
-  Widget build(BuildContext context) {
-    final appState = context.watch<GhmeraAppState>();
-    final requester = appState.userById(request.requesterId);
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(5),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x10000000),
-            blurRadius: 20,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Stack(
+    final theme = Theme.of(context);
+    final categoryStyle = GhCategoryStyle.of(request.category);
+    return GhCard(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+      onTap: onTap,
+      child: Row(
         children: [
-          ListTile(
-            onTap: () => onReviewRequest(request),
-            onLongPress: () => onLongPress(request),
-            minVerticalPadding: 0,
-            contentPadding: const EdgeInsets.only(
-              left: 4,
-              top: 0,
-              right: 16,
-              bottom: 0,
-            ),
-            leading: _RequesterAvatar(requester: requester, size: 80),
-            title: Padding(
-              padding: const EdgeInsets.only(right: 56),
-              child: Text(
-                requester.fullName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-            ),
-            subtitle: Text(
-              request.category.label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF61726F)),
+          GhIconBadge(
+            icon: categoryStyle.icon,
+            color: categoryStyle.color,
+            size: 42,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  request.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall,
+                ),
+                Text(
+                  '${request.category.label} · ${request.status.label}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
             ),
           ),
-          Positioned(
-            top: 8,
-            right: 16,
-            child: IgnorePointer(
-              child: _TrustStars(trustScore: requester.trustScore),
-            ),
+          TextButton.icon(
+            onPressed: onRestore,
+            icon: const Icon(Icons.visibility_outlined, size: 18),
+            label: const Text('Restore'),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _TrustStars extends StatelessWidget {
-  const _TrustStars({required this.trustScore});
-
-  final double trustScore;
-
-  @override
-  Widget build(BuildContext context) {
-    final filledStars = ((trustScore / 20).round()).clamp(0, 5);
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List<Widget>.generate(5, (index) {
-        final isFilled = index < filledStars;
-        return Padding(
-          padding: EdgeInsets.only(left: index == 0 ? 0 : 0.5),
-          child: Icon(
-            isFilled ? Icons.star_rounded : Icons.star_border_rounded,
-            size: 10,
-            color: isFilled ? const Color(0xFFF2B33D) : const Color(0xFFC8D0CE),
-          ),
-        );
-      }),
     );
   }
 }
@@ -5479,72 +6024,11 @@ class _RequesterAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final photoPath = requester.profilePhoto?.trim();
-    final initials = _initialsForName(requester.fullName);
-
-    if (photoPath == null || photoPath.isEmpty) {
-      return _fallbackAvatar(initials);
-    }
-
-    final isNetworkPhoto =
-        photoPath.startsWith('http://') || photoPath.startsWith('https://');
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(5),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: isNetworkPhoto
-            ? Image.network(
-                photoPath,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _fallbackAvatar(initials),
-              )
-            : Image.asset(
-                photoPath,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _fallbackAvatar(initials),
-              ),
-      ),
+    return GhAvatar(
+      name: requester.fullName,
+      photo: requester.profilePhoto,
+      size: size,
     );
-  }
-
-  Widget _fallbackAvatar(String initials) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: const Color(0xFFE7F1EE),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Center(
-        child: Text(
-          initials,
-          style: TextStyle(
-            color: const Color(0xFF103B36),
-            fontWeight: FontWeight.w700,
-            fontSize: size * 0.4,
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _initialsForName(String fullName) {
-    final parts = fullName
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList();
-
-    if (parts.isEmpty) {
-      return '?';
-    }
-
-    final first = parts.first.characters.first.toUpperCase();
-    final second = parts.length > 1
-        ? parts[1].characters.first.toUpperCase()
-        : '';
-    return '$first$second';
   }
 }
 
@@ -5561,98 +6045,94 @@ class _ThreadCard extends StatelessWidget {
     final request = appState.requestById(thread.requestId);
     final messages = appState.messagesForThread(thread.id);
     final lastMessage = messages.isNotEmpty ? messages.last : null;
+    final theme = Theme.of(context);
+    final lastMessageIsMine = lastMessage?.senderId == appState.currentUserId;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(5),
-        child: Ink(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(5),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Color(0x10000000),
-                blurRadius: 20,
-                offset: Offset(0, 10),
-              ),
-            ],
+    return GhCard(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      onTap: onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GhAvatar(
+            name: peer?.fullName ?? 'Unknown user',
+            photo: peer?.profilePhoto,
+            size: 48,
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                backgroundColor: const Color(0xFFE7F1EE),
-                child: Text(peer?.fullName.characters.first ?? '?'),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            peer?.fullName ?? 'Unknown user',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                        Text(
-                          _relativeTime(thread.lastMessageAt),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: const Color(0xFF788683)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      request.title,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF61726F),
+                    Expanded(
+                      child: Text(
+                        peer?.fullName ?? 'Unknown user',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall,
                       ),
                     ),
-                    const SizedBox(height: 8),
                     Text(
-                      lastMessage?.content ?? 'No messages yet.',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF526461),
-                        height: 1.4,
+                      _relativeTime(thread.lastMessageAt),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: GhColors.inkFaint,
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        if (thread.messageRequestPending)
-                          const _Pill(
-                            label: 'Message request',
-                            color: Color(0xFFFFEFD7),
-                          ),
-                        if (thread.contactSharedByIds.isNotEmpty)
-                          const _Pill(
-                            label: 'Contact sharing gated',
-                            color: Color(0xFFE8F1FF),
-                          ),
-                        if (thread.flaggedSafetyConcern)
-                          const _Pill(
-                            label: 'Safety flag',
-                            color: Color(0xFFFFE9D6),
-                          ),
-                      ],
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  request.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: GhColors.brand,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  lastMessage == null
+                      ? 'No messages yet. Say hello!'
+                      : '${lastMessageIsMine ? 'You: ' : ''}${lastMessage.content}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: GhColors.inkSoft,
+                  ),
+                ),
+                if (thread.messageRequestPending ||
+                    thread.flaggedSafetyConcern) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (thread.messageRequestPending)
+                        const GhTag(
+                          dense: true,
+                          label: 'Message request',
+                          foreground: GhColors.amber,
+                          background: GhColors.amberSoft,
+                        ),
+                      if (thread.flaggedSafetyConcern)
+                        const GhTag(
+                          dense: true,
+                          icon: Icons.flag_outlined,
+                          label: 'Safety flag',
+                          foreground: GhColors.coral,
+                          background: GhColors.coralSoft,
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -5667,82 +6147,69 @@ class _NotificationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _notificationColor(notification.type);
+    final theme = Theme.of(context);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Ink(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: notification.isRead
-                ? Colors.white
-                : color.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: notification.isRead
-                  ? const Color(0xFFE6ECEA)
-                  : color.withValues(alpha: 0.30),
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x0A000000),
-                blurRadius: 12,
-                offset: Offset(0, 3),
-              ),
-            ],
+    return GhCard(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      onTap: onTap,
+      shadow: !notification.isRead,
+      color: notification.isRead ? GhColors.surface : const Color(0xFFFBFEFD),
+      borderColor: notification.isRead
+          ? GhColors.line
+          : color.withValues(alpha: 0.35),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GhIconBadge(
+            icon: _notificationIcon(notification.type),
+            color: color,
+            size: 42,
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(_notificationIcon(notification.type), color: color),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            notification.title,
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  color: const Color(0xFF103B36),
-                                ),
-                          ),
-                        ),
-                        Text(
-                          _relativeTime(notification.createdAt),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: const Color(0xFF788683)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      notification.message,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF586A66),
-                        height: 1.45,
+                    Expanded(
+                      child: Text(
+                        notification.title,
+                        style: theme.textTheme.titleSmall,
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _relativeTime(notification.createdAt),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: GhColors.inkFaint,
+                      ),
+                    ),
+                    if (!notification.isRead) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  notification.message,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: GhColors.inkSoft,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -5753,37 +6220,9 @@ class _SheetDragHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4.5,
-              decoration: BoxDecoration(
-                color: const Color(0xFFC4D1CF),
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: SizedBox(
-              width: 32,
-              height: 32,
-              child: IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded, size: 20),
-                color: const Color(0xFF61726F),
-                padding: EdgeInsets.zero,
-                tooltip: 'Close',
-              ),
-            ),
-          ),
-        ],
-      ),
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 4),
+      child: GhSheetHandle(),
     );
   }
 }
@@ -5803,45 +6242,36 @@ class _MenuSheetActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = foregroundColor ?? const Color(0xFF103B36);
+    final color = foregroundColor ?? GhColors.ink;
 
-    return Container(
+    return GhCard(
       margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8EFEB)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x08000000),
-            blurRadius: 10,
-            offset: Offset(0, 2),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      radius: 16,
+      shadow: false,
+      onTap: onTap,
+      child: Row(
+        children: [
+          GhIconBadge(
+            icon: icon,
+            color: foregroundColor ?? GhColors.brand,
+            size: 38,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(color: color),
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: color.withValues(alpha: 0.4),
+            size: 22,
           ),
         ],
-      ),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        onTap: onTap,
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: color, size: 20),
-        ),
-        title: Text(
-          label,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: color,
-          ),
-        ),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: color.withValues(alpha: 0.5),
-          size: 20,
-        ),
       ),
     );
   }
@@ -5854,60 +6284,40 @@ class _ReportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE6ECEB)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 16,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
+    final theme = Theme.of(context);
+    final statusColor = _reportStatusColor(report.status);
+    return GhCard(
+      margin: const EdgeInsets.only(bottom: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
-                child: Text(
-                  report.reason,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF103B36),
-                  ),
-                ),
+                child: Text(report.reason, style: theme.textTheme.titleSmall),
               ),
-              _Pill(
+              GhTag(
+                dense: true,
                 label: report.status.label,
-                color: _reportStatusColor(
-                  report.status,
-                ).withValues(alpha: 0.14),
-                textColor: _reportStatusColor(report.status),
+                foreground: statusColor,
+                background: statusColor.withValues(alpha: 0.12),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
-            '${report.targetType.label} report • ${_relativeTime(report.createdAt)}',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF788683)),
+            '${report.targetType.label} report · ${_relativeTime(report.createdAt)}',
+            style: theme.textTheme.bodySmall,
           ),
-          const SizedBox(height: 10),
-          Text(
-            report.details,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              height: 1.45,
-              color: const Color(0xFF5F6F6B),
+          if (report.details.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              report.details,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: GhColors.inkSoft,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -5922,43 +6332,7 @@ class _AdminMetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 168,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE6ECEB)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0A000000),
-              blurRadius: 16,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              value,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF103B36),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF6B7976)),
-            ),
-          ],
-        ),
-      ),
-    );
+    return GhStatTile(value: value, label: label);
   }
 }
 
@@ -5975,68 +6349,28 @@ class _SafetyFeatureRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF103B36).withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: const Color(0xFF103B36)),
-        ),
+        GhIconBadge(icon: icon, size: 40),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF103B36),
-                ),
-              ),
-              const SizedBox(height: 4),
+              Text(title, style: theme.textTheme.titleSmall),
+              const SizedBox(height: 2),
               Text(
                 text,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF61726F),
-                  height: 1.45,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: GhColors.inkSoft,
                 ),
               ),
             ],
           ),
         ),
       ],
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.label, required this.color, this.textColor});
-
-  final String label;
-  final Color color;
-  final Color? textColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: textColor ?? const Color(0xFF233532),
-          fontWeight: FontWeight.w700,
-          fontSize: 12,
-        ),
-      ),
     );
   }
 }
@@ -6050,23 +6384,22 @@ class _HeroPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: Colors.white),
-          const SizedBox(width: 8),
+          Icon(icon, size: 15, color: Colors.white),
+          const SizedBox(width: 6),
           Text(
             label,
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w700,
-              fontSize: 13,
+              fontSize: 12.5,
             ),
           ),
         ],
@@ -6083,41 +6416,10 @@ class _EmptyStateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE6ECEB)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 16,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF103B36),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF61726F),
-              height: 1.45,
-            ),
-          ),
-        ],
-      ),
+    return GhEmptyState(
+      icon: Icons.inbox_outlined,
+      title: title,
+      message: message,
     );
   }
 }
@@ -6134,60 +6436,26 @@ extension _IterableLookup<T> on Iterable<T> {
   }
 }
 
-Color _urgencyColor(UrgencyLevel urgency) {
-  switch (urgency) {
-    case UrgencyLevel.low:
-      return const Color(0xFF4F8C62);
-    case UrgencyLevel.medium:
-      return const Color(0xFFD08A2E);
-    case UrgencyLevel.high:
-      return const Color(0xFFC45B3F);
-  }
-}
-
-Color _statusColor(HelpRequestStatus status) {
-  switch (status) {
-    case HelpRequestStatus.open:
-      return const Color(0xFF6A7A76);
-    case HelpRequestStatus.matching:
-      return const Color(0xFF0F6B5C);
-    case HelpRequestStatus.matched:
-      return const Color(0xFF2B7A78);
-    case HelpRequestStatus.accepted:
-      return const Color(0xFF2C7F62);
-    case HelpRequestStatus.inProgress:
-      return const Color(0xFFD08A2E);
-    case HelpRequestStatus.completed:
-      return const Color(0xFF47795D);
-    case HelpRequestStatus.canceled:
-      return const Color(0xFF8D6E63);
-    case HelpRequestStatus.reported:
-      return const Color(0xFFC45B3F);
-    case HelpRequestStatus.disputed:
-      return const Color(0xFFB14E5F);
-  }
-}
-
 Color _notificationColor(NotificationType type) {
   switch (type) {
     case NotificationType.matchFound:
-      return const Color(0xFF0F6B5C);
+      return GhColors.brand;
     case NotificationType.newMessage:
-      return const Color(0xFF2B7A78);
+      return GhColors.sky;
     case NotificationType.requestAccepted:
-      return const Color(0xFF3F7D59);
+      return GhColors.brand;
     case NotificationType.helpCompleted:
-      return const Color(0xFF558B6E);
+      return GhColors.credit;
     case NotificationType.reportUpdate:
-      return const Color(0xFF7B6FA6);
+      return GhColors.plum;
     case NotificationType.safetyAlert:
-      return const Color(0xFFC45B3F);
+      return GhColors.coral;
     case NotificationType.reciprocityWarning:
-      return const Color(0xFFD08A2E);
+      return GhColors.amber;
     case NotificationType.emotionalCheckInReminder:
-      return const Color(0xFFB6617A);
+      return GhColors.rose;
     case NotificationType.adminUpdate:
-      return const Color(0xFF5C6F90);
+      return GhColors.inkSoft;
   }
 }
 
@@ -6200,7 +6468,7 @@ IconData _notificationIcon(NotificationType type) {
     case NotificationType.requestAccepted:
       return Icons.assignment_turned_in_outlined;
     case NotificationType.helpCompleted:
-      return Icons.task_alt_rounded;
+      return Icons.volunteer_activism_rounded;
     case NotificationType.reportUpdate:
       return Icons.admin_panel_settings_outlined;
     case NotificationType.safetyAlert:
@@ -6217,31 +6485,14 @@ IconData _notificationIcon(NotificationType type) {
 Color _reportStatusColor(ReportStatus status) {
   switch (status) {
     case ReportStatus.open:
-      return const Color(0xFFC45B3F);
+      return GhColors.coral;
     case ReportStatus.investigating:
-      return const Color(0xFFD08A2E);
+      return GhColors.amber;
     case ReportStatus.resolved:
-      return const Color(0xFF4F8C62);
+      return GhColors.brand;
     case ReportStatus.dismissed:
-      return const Color(0xFF7A8885);
+      return GhColors.inkFaint;
   }
 }
 
-String _relativeTime(DateTime timestamp) {
-  final difference = DateTime.now().difference(timestamp);
-
-  if (difference.inMinutes < 1) {
-    return 'just now';
-  }
-  if (difference.inHours < 1) {
-    return '${difference.inMinutes}m ago';
-  }
-  if (difference.inDays < 1) {
-    return '${difference.inHours}h ago';
-  }
-  if (difference.inDays < 7) {
-    return '${difference.inDays}d ago';
-  }
-
-  return '${difference.inDays ~/ 7}w ago';
-}
+String _relativeTime(DateTime timestamp) => ghRelativeTime(timestamp);
