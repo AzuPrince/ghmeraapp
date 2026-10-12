@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../domain/constants/auth_messages.dart';
+
 class AuthException implements Exception {
   const AuthException(this.message);
 
@@ -217,7 +219,12 @@ class AuthProvider extends ChangeNotifier {
       final result = await callable.call<Map<String, dynamic>>(data);
       return result.data;
     } on FirebaseFunctionsException catch (error) {
-      throw AuthException(error.message ?? fallbackMessage);
+      throw AuthException(
+        cleanAuthenticationErrorMessage(
+          error.message,
+          fallbackMessage: fallbackMessage,
+        ),
+      );
     } on AuthException {
       rethrow;
     } catch (error) {
@@ -250,28 +257,10 @@ class AuthProvider extends ChangeNotifier {
   }
 
   String _firebaseErrorMessage(FirebaseAuthException error) {
-    switch (error.code) {
-      case 'invalid-email':
-        return 'Enter a valid email address.';
-      case 'invalid-credential':
-      case 'user-not-found':
-      case 'wrong-password':
-        return 'The email or password is incorrect.';
-      case 'email-already-in-use':
-        return 'An account already exists for this email. Please sign in.';
-      case 'weak-password':
-        return 'Choose a stronger password.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please wait and try again.';
-      case 'user-disabled':
-        return 'This account has been disabled.';
-      case 'network-request-failed':
-        return 'A network error occurred. Check your connection and try again.';
-      case 'operation-not-allowed':
-        return 'Email and password sign in is temporarily unavailable. Please try again later.';
-      default:
-        return error.message ?? 'Authentication failed. Please try again.';
-    }
+    return firebaseAuthenticationErrorMessage(
+      code: error.code,
+      message: error.message,
+    );
   }
 
   FirebaseAuth _requireFirebaseAuth() {

@@ -111,6 +111,20 @@ def _load_user_by_email(email: str):
         )
 
 
+def _create_custom_sign_in_token(uid: str) -> str:
+    try:
+        return admin_auth.create_custom_token(uid).decode("utf-8")
+    except Exception:
+        logger.exception("Failed to create a custom sign-in token for user %s", uid)
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=(
+                "Your account was created, but automatic sign in could not be "
+                "completed. Please sign in with your email and password."
+            ),
+        )
+
+
 def _verify_stored_code(*, doc_ref, code_identifier: str, code: str) -> dict[str, Any]:
     snap = doc_ref.get()
     if not snap.exists:
@@ -448,8 +462,8 @@ def complete_email_registration(req: https_fn.CallableRequest) -> dict[str, Any]
             message="Failed to create the user account. Please try again.",
         )
 
-    custom_token = admin_auth.create_custom_token(user_record.uid).decode("utf-8")
     doc_ref.delete()
+    custom_token = _create_custom_sign_in_token(user_record.uid)
 
     return {
         "ok": True,

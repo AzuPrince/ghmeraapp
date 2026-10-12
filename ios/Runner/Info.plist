@@ -32,6 +32,8 @@
 	<string>Ghmera uses your location to auto-fill your city and area for safer local matching.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>When you enable automatic location, Ghmera uses your location to keep your city and area current for nearby help requests, helper matching, and approximate map results.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Ghmera uses your location to auto-fill your city and area for safer local matching.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
