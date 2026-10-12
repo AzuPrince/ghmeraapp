@@ -14,7 +14,14 @@ import '../services/help_credits.dart';
 import '../services/request_matching_engine.dart';
 
 class GhmeraAppState extends ChangeNotifier {
-  GhmeraAppState() : _currentUserId = AppDatabase.instance.currentUserId {
+  GhmeraAppState({
+    AppFirestoreSyncService? firestoreSyncService,
+    BackendWorkflowApiService? workflowApiService,
+  }) : _appFirestoreSyncService =
+           firestoreSyncService ?? AppFirestoreSyncService(),
+       _backendWorkflowApiService =
+           workflowApiService ?? BackendWorkflowApiService(),
+       _currentUserId = AppDatabase.instance.currentUserId {
     if (_currentUserId.trim().isEmpty) {
       _currentUserId = _defaultCurrentUserId;
     }
@@ -53,11 +60,12 @@ class GhmeraAppState extends ChangeNotifier {
         HelpRequestStatus.completed,
       };
 
+  static const Set<HelpRequestStatus> _openForHelpRequestStatuses =
+      <HelpRequestStatus>{HelpRequestStatus.open, HelpRequestStatus.matching};
+
   final AppDatabase _database = AppDatabase.instance;
-  final AppFirestoreSyncService _appFirestoreSyncService =
-      AppFirestoreSyncService();
-  final BackendWorkflowApiService _backendWorkflowApiService =
-      BackendWorkflowApiService();
+  final AppFirestoreSyncService _appFirestoreSyncService;
+  final BackendWorkflowApiService _backendWorkflowApiService;
   final RequestMatchingEngine _requestMatchingEngine =
       const RequestMatchingEngine();
   StreamSubscription<User?>? _authStateSubscription;
@@ -68,6 +76,7 @@ class GhmeraAppState extends ChangeNotifier {
   bool _isHydratingRemoteState = false;
   bool _accountDeletionInProgress = false;
   Map<String, dynamic>? _pendingLocalDatabase;
+  Map<String, dynamic>? _deferredRemoteDatabase;
   String? _lastWorkflowError;
 
   /// The server's explanation for the most recent rejected action, if any.
@@ -112,13 +121,40 @@ class GhmeraAppState extends ChangeNotifier {
     if (currentUser.blockedUserIds.contains(request.requesterId)) {
       return false;
     }
-    // Once another user has accepted this request, hide it from everyone
-    // except the accepted helper themselves.
-    if (request.acceptedHelperId != null &&
-        request.acceptedHelperId != _currentUserId) {
-      return false;
+    if (request.acceptedHelperId == _currentUserId) {
+      return true;
     }
-    return true;
+    return isRequestOpenForHelp(request);
+  }
+
+  /// Whether [request] still needs a helper. Once someone takes it or it
+  /// leaves the open/matching states it is settled for everyone else.
+  bool isRequestOpenForHelp(HelpRequestEntity request) {
+    return request.acceptedHelperId == null &&
+        _openForHelpRequestStatuses.contains(request.status);
+  }
+
+  /// Whether the current user may still offer help on [requestId], judged
+  /// against the latest synced copy rather than a possibly stale one.
+  bool canCurrentUserOfferHelp(String requestId) {
+    final request = findRequestById(requestId);
+    return isCommunityRequestStillOpen(requestId) &&
+        !currentUserNeedsVerificationToHelp(request!);
+  }
+
+  /// Whether [requestId] is someone else's request that is still waiting for
+  /// a helper and visible to the current user.
+  bool isCommunityRequestStillOpen(String requestId) {
+    final request = findRequestById(requestId);
+    return request != null &&
+        request.acceptedHelperId == null &&
+        _shouldShowCommunityRequest(request);
+  }
+
+  /// High-risk requests can only be taken by ID-verified or trusted helpers.
+  bool currentUserNeedsVerificationToHelp(HelpRequestEntity request) {
+    final user = currentUser;
+    return request.isHighRisk && !user.idVerified && !user.trustedHelper;
   }
 
   List<HelpRequestEntity> get myRequests {
@@ -339,8 +375,18 @@ class GhmeraAppState extends ChangeNotifier {
       List<SupportCircleEntity>.unmodifiable(_supportCircles);
 
   List<HelpRequestEntity> get highRiskRequests {
-    final requests = _requests.where((request) => request.isHighRisk).toList()
-      ..sort(_compareRequests);
+    final isAdmin = currentUser.isAdmin;
+    final requests =
+        _requests
+            .where(
+              (request) =>
+                  request.isHighRisk &&
+                  (isAdmin ||
+                      isCurrentUserParticipantForRequest(request) ||
+                      _shouldShowCommunityRequest(request)),
+            )
+            .toList()
+          ..sort(_compareRequests);
     return requests;
   }
 
@@ -407,15 +453,15 @@ class GhmeraAppState extends ChangeNotifier {
     if (!credits.canAffordRequest) {
       final need = credits.creditsNeededToPost;
       final heldNote = credits.held > 0
-          ? ' or close an open request to release its held credits'
+          ? ' or close an open request to release its held credit'
           : '';
-      return 'You need $requestCreditCost credits to post a request: $askCreditCost to ask and $receiveCreditCost to receive help. '
+      return 'You need ${creditCountLabel(requestCreditCost)} to post a request. '
           'Earn $need more by helping someone$heldNote.';
     }
     if (credits.earned == 0 && credits.spent == 0 && credits.held == 0) {
-      return 'You have $startingHelpCredits welcome credits. Each request uses $requestCreditCost: $askCreditCost for asking and $receiveCreditCost for receiving help. Every person you help earns you $helpEarnedCredits more.';
+      return 'You have $startingHelpCredits welcome credits. Each request uses ${creditCountLabel(requestCreditCost)}, and every person you help earns you $helpEarnedCredits more, with no limit.';
     }
-    return 'You have ${credits.available} credits ready to use. Each request needs $requestCreditCost, and helping others earns you more.';
+    return 'You have ${creditCountLabel(credits.available)} ready to use. Each request needs ${creditCountLabel(requestCreditCost)}, and helping others earns you more, with no limit.';
   }
 
   double get currentUserAverageReview {
@@ -462,6 +508,15 @@ class GhmeraAppState extends ChangeNotifier {
 
   HelpRequestEntity requestById(String id) {
     return _requests.firstWhere((request) => request.id == id);
+  }
+
+  HelpRequestEntity? findRequestById(String id) {
+    for (final request in _requests) {
+      if (request.id == id) {
+        return request;
+      }
+    }
+    return null;
   }
 
   UserEntity? helperForRequest(HelpRequestEntity request) {
@@ -798,7 +853,7 @@ class GhmeraAppState extends ChangeNotifier {
       return;
     }
 
-    _applyRemoteDatabase(rawDatabase, hasPendingWrites: false);
+    _applyRemoteDatabase(rawDatabase, hasPendingWrites: false, force: true);
   }
 
   void toggleCurrentUserProvidedCategory(RequestCategory category) {
@@ -1152,7 +1207,11 @@ class GhmeraAppState extends ChangeNotifier {
       operation: 'volunteer_for_help_request',
       payload: <String, dynamic>{'requestId': requestId},
     );
-    return response?.result?['matched'] == true;
+    final matched = response?.result?['matched'] == true;
+    if (!matched) {
+      unawaited(refreshHelpRequests());
+    }
+    return matched;
   }
 
   Future<bool> requestHelperForMyRequest({
@@ -1493,8 +1552,29 @@ class GhmeraAppState extends ChangeNotifier {
           : 'We could not reach Ghmera. Check your connection and try again.';
       debugPrint('Workflow API operation "$operation" failed: $error');
       debugPrintStack(stackTrace: stackTrace);
+      if (error is BackendWorkflowApiException && error.database != null) {
+        _showServerStateAfterConflict(error.database!);
+      }
       return null;
     }
+  }
+
+  /// The server rejected an action because this copy was out of date. Show
+  /// the server's view of the request without saving it, then reload.
+  void _showServerStateAfterConflict(Map<String, dynamic> serverDatabase) {
+    _isHydratingRemoteState = true;
+    try {
+      _database.hydrateFromMap(serverDatabase);
+      _currentUserId = _database.currentUserId;
+      _syncDerivedUserMetrics();
+    } catch (error, stackTrace) {
+      debugPrint('Failed to apply server state after a conflict: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      _isHydratingRemoteState = false;
+    }
+    super.notifyListeners();
+    unawaited(refreshHelpRequests());
   }
 
   void _persistAppState() {
@@ -1507,13 +1587,33 @@ class GhmeraAppState extends ChangeNotifier {
     );
     _pendingLocalDatabase = localDatabase;
 
-    unawaited(
-      _appFirestoreSyncService.syncDatabase(
+    unawaited(_syncLocalDatabase(localDatabase));
+  }
+
+  Future<void> _syncLocalDatabase(Map<String, dynamic> localDatabase) async {
+    try {
+      await _appFirestoreSyncService.syncDatabase(
         database: localDatabase,
         users: _users,
         currentUserId: _currentUserId,
-      ),
-    );
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Firestore app-state sync threw: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    // Remote snapshots are held back only while this write is in flight. A
+    // failed write or an echo that never matches exactly must not leave the
+    // app ignoring everyone else's changes.
+    if (!identical(_pendingLocalDatabase, localDatabase)) {
+      return;
+    }
+    _pendingLocalDatabase = null;
+    final deferredRemoteDatabase = _deferredRemoteDatabase;
+    _deferredRemoteDatabase = null;
+    if (deferredRemoteDatabase != null) {
+      _applyRemoteDatabase(deferredRemoteDatabase, hasPendingWrites: false);
+    }
   }
 
   void _startFirestoreLiveSync() {
@@ -1539,10 +1639,19 @@ class GhmeraAppState extends ChangeNotifier {
         );
   }
 
+  /// Applies a remote copy of the database. While a local write is in flight
+  /// the newest remote copy is held back and applied once that write settles.
+  /// [force] applies the remote copy regardless, for explicit refreshes.
   void _applyRemoteDatabase(
     Map<String, dynamic> rawDatabase, {
     required bool hasPendingWrites,
+    bool force = false,
   }) {
+    _deferredRemoteDatabase = null;
+    if (force) {
+      _pendingLocalDatabase = null;
+    }
+
     final localDatabase = _database.toMap(
       currentUserEmail: _resolvedCurrentUserEmail,
     );
@@ -1556,15 +1665,15 @@ class GhmeraAppState extends ChangeNotifier {
     }
 
     if (_pendingLocalDatabase != null) {
-      if (_deepEquals(_pendingLocalDatabase, rawDatabase)) {
-        if (!hasPendingWrites) {
-          _pendingLocalDatabase = null;
-        }
+      if (!_deepEquals(_pendingLocalDatabase, rawDatabase)) {
+        _deferredRemoteDatabase = rawDatabase;
+      } else if (!hasPendingWrites) {
+        _pendingLocalDatabase = null;
       }
       return;
     }
 
-    if (hasPendingWrites) {
+    if (hasPendingWrites && !force) {
       return;
     }
 
@@ -1713,6 +1822,7 @@ class GhmeraAppState extends ChangeNotifier {
   Future<void> prepareForAccountDeletion() async {
     _accountDeletionInProgress = true;
     _pendingLocalDatabase = null;
+    _deferredRemoteDatabase = null;
     await _remoteDatabaseSubscription?.cancel();
     _remoteDatabaseSubscription = null;
   }
@@ -1727,6 +1837,7 @@ class GhmeraAppState extends ChangeNotifier {
 
   void completeAccountDeletion() {
     _pendingLocalDatabase = null;
+    _deferredRemoteDatabase = null;
     _database.clear();
     _currentUserId = _defaultCurrentUserId;
   }

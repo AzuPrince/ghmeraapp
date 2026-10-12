@@ -478,10 +478,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                     isEditing
                         ? 'Save changes'
                         : requestLocked
-                        ? 'You need $requestCreditCost credits to post'
+                        ? 'You need ${creditCountLabel(requestCreditCost)} to post'
                         : isFree
                         ? 'Post emergency request · free'
-                        : 'Post request · uses $requestCreditCost credits',
+                        : 'Post request · uses ${creditCountLabel(requestCreditCost)}',
                   ),
                 ),
               ),
@@ -538,7 +538,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       showGhmeraSnackBar(
         context,
         message:
-            'You need at least $requestCreditCost help credits to post: $askCreditCost to ask and $receiveCreditCost to receive help. Help someone in the community to earn more.',
+            'You need at least ${creditCountLabel(requestCreditCost)} available to post. Help someone in the community to earn more.',
         type: SnackBarType.error,
       );
       return;
@@ -600,7 +600,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
           ? 'Your request changes were saved.'
           : isFree
           ? 'Your emergency request is live. Nearby helpers are being notified.'
-          : 'Your request is live. $requestCreditCost credits are on hold until the help is done.',
+          : 'Your request is live. ${creditCountLabel(requestCreditCost)} is on hold until the help is done.',
       type: SnackBarType.success,
     );
     Navigator.of(context).pop(savedRequest.id);
@@ -648,9 +648,9 @@ class _CreditStatusBanner extends StatelessWidget {
         background: GhColors.coralSoft,
         title: available <= 0
             ? 'You are out of help credits'
-            : 'You need $requestCreditCost credits to post',
+            : 'You need ${creditCountLabel(requestCreditCost)} to post',
         message:
-            'Each request uses $askCreditCost credit to ask and $receiveCreditCost to receive help. '
+            'Each request uses ${creditCountLabel(requestCreditCost)}. '
             'Help someone in the community to earn $needed more. Emergency requests are always free.',
         action: TextButton(
           onPressed: onChooseEmergency,
@@ -669,7 +669,7 @@ class _CreditStatusBanner extends StatelessWidget {
         ? 'Emergency requests are free. No credits will be used.'
         : bypass && available < requestCreditCost
         ? 'Your account is community supported, so you can post without credits.'
-        : 'Posting holds $requestCreditCost credits: $askCreditCost for asking and $receiveCreditCost for receiving help. Both are used once the help is done. You have $available available.';
+        : 'Posting holds ${creditCountLabel(requestCreditCost)}. It is used once the help is done, or returned if you cancel. You have $available available.';
 
     return Container(
       padding: const EdgeInsets.all(14),

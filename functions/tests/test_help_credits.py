@@ -2,6 +2,7 @@ import unittest
 
 from workflow_backend import WorkflowError
 from workflow_backend.credits import REQUEST_CREDIT_COST, help_credit_summary
+from workflow_backend.constants import HELP_EARNED_CREDITS, STARTING_HELP_CREDITS
 
 from test_workflow_operations import _apply, _database, _user
 
@@ -49,8 +50,10 @@ class HelpCreditSummaryTests(unittest.TestCase):
         self.assertEqual(summary['available'], 5)
         self.assertEqual(summary['held'], 0)
 
-    def test_request_costs_one_for_asking_and_one_for_receiving(self):
-        self.assertEqual(REQUEST_CREDIT_COST, 2)
+    def test_a_request_costs_what_a_helper_earns(self):
+        self.assertEqual(STARTING_HELP_CREDITS, 5)
+        self.assertEqual(REQUEST_CREDIT_COST, 1)
+        self.assertEqual(HELP_EARNED_CREDITS, REQUEST_CREDIT_COST)
 
     def test_open_request_holds_and_completion_spends_and_earns(self):
         requests = [
@@ -67,18 +70,44 @@ class HelpCreditSummaryTests(unittest.TestCase):
         ]
         summary = help_credit_summary('a', requests)
         self.assertEqual(summary['earned'], 1)
-        self.assertEqual(summary['spent'], 2)
-        self.assertEqual(summary['held'], 2)
-        self.assertEqual(summary['balance'], 4)
-        self.assertEqual(summary['available'], 2)
+        self.assertEqual(summary['spent'], 1)
+        self.assertEqual(summary['held'], 1)
+        self.assertEqual(summary['balance'], 5)
+        self.assertEqual(summary['available'], 4)
 
         helper_summary = help_credit_summary('b', requests)
         self.assertEqual(helper_summary['earned'], 1)
-        self.assertEqual(helper_summary['spent'], 2)
-        self.assertEqual(helper_summary['available'], 4)
+        self.assertEqual(helper_summary['spent'], 1)
+        self.assertEqual(helper_summary['available'], 5)
 
-    def test_history_from_the_old_rule_can_go_negative(self):
-        requests = [_completed_request(f'r{i}') for i in range(3)]
+    def test_completed_exchange_balances(self):
+        requests = [_completed_request('r1', requester_id='a', helper_id='b')]
+        requester = help_credit_summary('a', requests)
+        helper = help_credit_summary('b', requests)
+        self.assertEqual(requester['available'] + helper['available'], 10)
+        self.assertEqual(requester['available'], 4)
+        self.assertEqual(helper['available'], 6)
+
+    def test_earning_has_no_limit(self):
+        def helps_given(count):
+            return [
+                _completed_request(
+                    f'given_{i}', requester_id=f'neighbour_{i}', helper_id='me'
+                )
+                for i in range(count)
+            ]
+
+        summary = help_credit_summary('me', helps_given(12))
+        self.assertEqual(summary['earned'], 12)
+        self.assertEqual(summary['spent'], 0)
+        self.assertEqual(summary['held'], 0)
+        self.assertEqual(summary['balance'], 17)
+        self.assertEqual(summary['available'], 17)
+
+        self.assertEqual(help_credit_summary('me', helps_given(150))['available'], 155)
+
+    def test_balance_can_go_below_zero(self):
+        requests = [_completed_request(f'r{i}') for i in range(6)]
         summary = help_credit_summary('user_requester', requests)
         self.assertEqual(summary['spent'], 6)
         self.assertEqual(summary['balance'], -1)
@@ -105,35 +134,70 @@ class HelpCreditWorkflowTests(unittest.TestCase):
         return result['requestId']
 
     def _fill_open_requests(self):
-        return [self._create(title=f'Request number {index}') for index in range(2)]
+        return [
+            self._create(title=f'Request number {index}')
+            for index in range(STARTING_HELP_CREDITS)
+        ]
 
     def _seed_requester_history(self, requests):
         self.database['requester@example.com']['requests'].extend(requests)
 
-    def test_requests_are_blocked_once_fewer_than_two_credits_are_free(self):
+    def _requester_credits(self):
+        return help_credit_summary('user_requester', _all_requests(self.database))
+
+    def _volunteer(self, request_id):
+        self.database, _ = _apply(
+            self.database,
+            'user_helper',
+            'volunteer_for_help_request',
+            {'requestId': request_id},
+        )
+
+    def _complete(self, request_id):
+        self._volunteer(request_id)
+        for actor in ('user_helper', 'user_requester'):
+            self.database, _ = _apply(
+                self.database,
+                actor,
+                'confirm_request_completion',
+                {'requestId': request_id},
+            )
+
+    def test_each_open_request_holds_one_credit(self):
+        self._create()
+        credits = self._requester_credits()
+        self.assertEqual(credits['held'], 1)
+        self.assertEqual(credits['available'], 4)
+
+    def test_requests_are_blocked_once_no_credit_is_free(self):
         self._fill_open_requests()
+        self.assertEqual(self._requester_credits()['available'], 0)
 
         with self.assertRaises(WorkflowError) as raised:
             self._create(title='One too many')
         self.assertEqual(raised.exception.status_code, 409)
-        self.assertIn('at least 2 help credits', raised.exception.message)
+        self.assertIn('at least 1 help credit available', raised.exception.message)
 
-    def test_posting_with_exactly_two_available_succeeds(self):
-        self._seed_requester_history([_completed_request('r_old')])
-        self.assertTrue(self._create(title='Uses my last two'))
+    def test_posting_with_exactly_one_available_succeeds(self):
+        self._seed_requester_history(
+            [_completed_request(f'r_old_{i}') for i in range(4)]
+        )
+        self.assertEqual(self._requester_credits()['available'], 1)
+        self.assertTrue(self._create(title='Uses my last one'))
         with self.assertRaises(WorkflowError):
             self._create(title='No credits left')
 
-    def test_one_available_credit_is_not_enough(self):
+    def test_zero_available_is_blocked(self):
         self._seed_requester_history(
-            [_completed_request('r_old_1'), _completed_request('r_old_2')]
+            [_completed_request(f'r_old_{i}') for i in range(5)]
         )
+        self.assertEqual(self._requester_credits()['available'], 0)
         with self.assertRaises(WorkflowError):
-            self._create(title='Only one credit left')
+            self._create(title='Nothing left')
 
     def test_negative_balance_blocks_posting_but_not_emergencies(self):
         self._seed_requester_history(
-            [_completed_request(f'r_old_{i}') for i in range(3)]
+            [_completed_request(f'r_old_{i}') for i in range(6)]
         )
         with self.assertRaises(WorkflowError):
             self._create(title='In debt')
@@ -144,6 +208,7 @@ class HelpCreditWorkflowTests(unittest.TestCase):
 
         request_id = self._create(title='Flooded street', category='emergencySupport')
         self.assertTrue(request_id)
+        self.assertEqual(self._requester_credits()['held'], STARTING_HELP_CREDITS)
 
     def test_spoofed_emergency_override_does_not_bypass_credits(self):
         self._fill_open_requests()
@@ -153,7 +218,7 @@ class HelpCreditWorkflowTests(unittest.TestCase):
         with self.assertRaises(WorkflowError):
             _apply(self.database, 'user_requester', 'create_help_request', payload)
 
-    def test_deleting_an_open_request_releases_both_credits(self):
+    def test_deleting_an_open_request_releases_its_credit(self):
         request_ids = self._fill_open_requests()
         self.database, _ = _apply(
             self.database,
@@ -161,41 +226,53 @@ class HelpCreditWorkflowTests(unittest.TestCase):
             'delete_help_request',
             {'requestId': request_ids[0]},
         )
-        summary = help_credit_summary('user_requester', _all_requests(self.database))
-        self.assertEqual(summary['held'], 2)
-        self.assertEqual(summary['available'], 3)
+        credits = self._requester_credits()
+        self.assertEqual(credits['held'], 4)
+        self.assertEqual(credits['available'], 1)
         self.assertTrue(self._create(title='Fits again now'))
 
-    def test_completed_help_spends_two_and_helper_earns_one(self):
+    def test_canceling_a_matched_request_releases_its_credit(self):
         request_id = self._create()
+        self._volunteer(request_id)
+        self.assertEqual(self._requester_credits()['available'], 4)
+
         self.database, _ = _apply(
             self.database,
-            'user_helper',
-            'volunteer_for_help_request',
+            'user_requester',
+            'cancel_accepted_request',
             {'requestId': request_id},
         )
-        for actor in ('user_helper', 'user_requester'):
-            self.database, _ = _apply(
-                self.database,
-                actor,
-                'confirm_request_completion',
-                {'requestId': request_id},
-            )
+        credits = self._requester_credits()
+        self.assertEqual(credits['held'], 0)
+        self.assertEqual(credits['spent'], 0)
+        self.assertEqual(credits['available'], 5)
+        helper_credits = help_credit_summary('user_helper', _all_requests(self.database))
+        self.assertEqual(helper_credits['earned'], 0)
+
+    def test_completed_help_spends_one_and_helper_earns_one(self):
+        request_id = self._create()
+        self._complete(request_id)
 
         requests = _all_requests(self.database)
         requester_credits = help_credit_summary('user_requester', requests)
         helper_credits = help_credit_summary('user_helper', requests)
-        self.assertEqual(requester_credits['available'], 3)
-        self.assertEqual(requester_credits['spent'], 2)
+        self.assertEqual(requester_credits['available'], 4)
+        self.assertEqual(requester_credits['spent'], 1)
         self.assertEqual(requester_credits['held'], 0)
         self.assertEqual(helper_credits['available'], 6)
         self.assertEqual(helper_credits['earned'], 1)
 
-        helper_titles = [
-            notification['title']
-            for notification in _notifications_for(self.database, 'helper@example.com')
-        ]
-        self.assertIn('You earned 1 help credit', helper_titles)
+        helper_notifications = _notifications_for(self.database, 'helper@example.com')
+        self.assertIn(
+            'You earned 1 help credit',
+            [notification['title'] for notification in helper_notifications],
+        )
+        self.assertTrue(
+            any(
+                'You now have 6 help credits' in notification['message']
+                for notification in helper_notifications
+            )
+        )
         requester_messages = [
             notification['message']
             for notification in _notifications_for(
@@ -204,20 +281,53 @@ class HelpCreditWorkflowTests(unittest.TestCase):
         ]
         self.assertTrue(
             any(
-                '2 help credits were used: 1 for asking and 1 for receiving help'
-                in message
-                and 'You have 3 available' in message
+                '1 help credit was used. You have 4 available.' in message
                 for message in requester_messages
             )
         )
+        self.assertFalse(any('for asking' in message for message in requester_messages))
 
         request = next(item for item in requests if item['id'] == request_id)
-        actions = [entry['action'] for entry in request['actionLog']]
-        self.assertIn('Requester used 1 help credit for asking', actions)
-        self.assertIn('Requester used 1 help credit for receiving help', actions)
-        self.assertIn('Helper earned 1 help credit', actions)
+        credit_actions = [
+            entry['action']
+            for entry in request['actionLog']
+            if 'help credit' in entry['action']
+        ]
+        self.assertEqual(
+            credit_actions,
+            ['Helper earned 1 help credit', 'Requester used 1 help credit'],
+        )
 
-    def test_changing_a_free_request_to_paid_needs_two_credits(self):
+    def test_helper_keeps_earning_past_the_starting_balance(self):
+        neighbour = _user('user_neighbour', 'neighbour@example.com')
+        self.database['neighbour@example.com'] = _database(neighbour)[
+            'neighbour@example.com'
+        ]
+        self.database['neighbour@example.com']['requests'].extend(
+            _completed_request(
+                f'given_{i}', requester_id='user_neighbour', helper_id='user_helper'
+            )
+            for i in range(12)
+        )
+        self.assertEqual(
+            help_credit_summary('user_helper', _all_requests(self.database))['available'],
+            17,
+        )
+
+        self._complete(self._create())
+
+        helper_credits = help_credit_summary('user_helper', _all_requests(self.database))
+        self.assertEqual(helper_credits['earned'], 13)
+        self.assertEqual(helper_credits['available'], 18)
+        helper_messages = [
+            notification['message']
+            for notification in _notifications_for(self.database, 'helper@example.com')
+        ]
+        self.assertTrue(
+            any('You now have 18 help credits' in message for message in helper_messages)
+        )
+
+    def test_changing_a_free_request_to_paid_needs_a_credit(self):
         self._fill_open_requests()
         emergency_id = self._create(title='Flooded street', category='emergencySupport')
 

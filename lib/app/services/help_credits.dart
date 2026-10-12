@@ -2,13 +2,17 @@ import '../models/ghmera_models.dart';
 
 /// Mirrors `functions/workflow_backend/credits.py`, which enforces these rules.
 const int startingHelpCredits = 5;
-const int askCreditCost = 1;
-const int receiveCreditCost = 1;
-const int requestCreditCost = askCreditCost + receiveCreditCost;
+
+/// What a requester pays for one completed request. It matches what the helper
+/// earns, so every exchange balances.
+const int requestCreditCost = 1;
 const int helpEarnedCredits = 1;
 const Set<RequestCategory> creditFreeCategories = <RequestCategory>{
   RequestCategory.emergencySupport,
 };
+
+/// "1 credit", "3 credits".
+String creditCountLabel(int count) => count == 1 ? '1 credit' : '$count credits';
 
 bool isCreditFreeRequest(HelpRequestEntity request) {
   return creditFreeCategories.contains(request.category);
@@ -19,7 +23,7 @@ bool _isClosed(HelpRequestEntity request) {
       request.status == HelpRequestStatus.canceled;
 }
 
-enum HelpCreditEntryKind { starting, earned, asked, received, held }
+enum HelpCreditEntryKind { starting, earned, received, held }
 
 class HelpCreditEntry {
   const HelpCreditEntry({
@@ -75,25 +79,15 @@ class HelpCreditSummary {
       if (request.status == HelpRequestStatus.completed &&
           request.acceptedHelperId != null) {
         spent += requestCreditCost;
-        entries
-          ..add(
-            HelpCreditEntry(
-              kind: HelpCreditEntryKind.received,
-              amount: -receiveCreditCost,
-              title: 'Received help with "${request.displayTitle}"',
-              request: request,
-              at: completedAt,
-            ),
-          )
-          ..add(
-            HelpCreditEntry(
-              kind: HelpCreditEntryKind.asked,
-              amount: -askCreditCost,
-              title: 'Asked for help with "${request.displayTitle}"',
-              request: request,
-              at: completedAt,
-            ),
-          );
+        entries.add(
+          HelpCreditEntry(
+            kind: HelpCreditEntryKind.received,
+            amount: -requestCreditCost,
+            title: 'Received help with "${request.displayTitle}"',
+            request: request,
+            at: completedAt,
+          ),
+        );
       } else if (!_isClosed(request)) {
         held += requestCreditCost;
         entries.add(
@@ -152,8 +146,8 @@ class HelpCreditSummary {
   /// Available credits for display; never below zero.
   int get spendable => available < 0 ? 0 : available;
 
-  /// How far below zero the available balance is, for history recomputed
-  /// under the asking-plus-receiving charge.
+  /// How far below zero the available balance is, e.g. for community supported
+  /// accounts that posted without credits.
   int get shortfall => available < 0 ? -available : 0;
 
   static DateTime? _completedAt(HelpRequestEntity request) {

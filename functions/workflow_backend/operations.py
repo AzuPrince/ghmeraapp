@@ -4,26 +4,31 @@ import copy
 from typing import Any
 
 from .constants import (
-    ASK_CREDIT_COST,
     CREDIT_FREE_CATEGORIES,
     HELP_EARNED_CREDITS,
     HELPER_BROADCAST_LIMIT,
-    RECEIVE_CREDIT_COST,
     REQUESTER_SUGGESTION_LIMIT,
 )
 from .credits import REQUEST_CREDIT_COST, is_credit_free_request
 from .errors import WorkflowError
 from .utils import _clamp_int, _copy_string_list, _first_name, _now_iso
 
-NOT_ENOUGH_CREDITS_MESSAGE = (
-    f'You need at least {REQUEST_CREDIT_COST} help credits to post a request: '
-    f'{ASK_CREDIT_COST} for asking and {RECEIVE_CREDIT_COST} for receiving help. '
-    'Help someone in the community to earn more credits.'
-)
-
-
 def _credit_word(amount: int) -> str:
     return 'help credit' if amount == 1 else 'help credits'
+
+
+NOT_ENOUGH_CREDITS_MESSAGE = (
+    f'You need at least {REQUEST_CREDIT_COST} {_credit_word(REQUEST_CREDIT_COST)} '
+    'available to post a request. '
+    'Help someone in the community to earn more credits.'
+)
+REQUEST_ALREADY_TAKEN_MESSAGE = 'Someone is already helping with this request.'
+REQUEST_CLOSED_MESSAGE = 'This request is no longer open for help.'
+REQUEST_NOT_AVAILABLE_MESSAGE = 'This request is no longer available.'
+HIGH_RISK_QUALIFICATION_MESSAGE = (
+    'This request needs extra safety checks, so only ID-verified or trusted '
+    'helpers can take it.'
+)
 
 
 class WorkflowOperationsMixin:
@@ -432,12 +437,10 @@ class WorkflowOperationsMixin:
         request_id = str(payload.get('requestId', '')).strip()
         request = self.find_request(request_id)
         if request is None:
-            raise WorkflowError('This request was not found.', status_code=404)
-        if request.get('requesterId') == self.current_user_id or self.is_closed_request(
-            request
-        ):
+            raise WorkflowError(REQUEST_NOT_AVAILABLE_MESSAGE, status_code=404)
+        if request.get('requesterId') == self.current_user_id:
             raise WorkflowError(
-                'This request is no longer available for matching.',
+                'You cannot offer help on your own request.',
                 status_code=409,
             )
         if request.get('acceptedHelperId') == self.current_user_id:
@@ -446,16 +449,24 @@ class WorkflowOperationsMixin:
                 'requestId': request_id,
                 'helperId': self.current_user_id,
             }
-        if request.get('acceptedHelperId') and request.get('acceptedHelperId') != self.current_user_id:
-            raise WorkflowError(
-                'This request is no longer available for matching.',
-                status_code=409,
-            )
+        if request.get('acceptedHelperId'):
+            raise WorkflowError(REQUEST_ALREADY_TAKEN_MESSAGE, status_code=409)
+        if self.is_closed_request(request):
+            raise WorkflowError(REQUEST_CLOSED_MESSAGE, status_code=409)
 
         helper = self.current_user()
         requester = self.find_user(str(request.get('requesterId', '')).strip())
         if requester is None:
             raise WorkflowError('The requester could not be resolved.', status_code=404)
+        if not self.can_users_interact(requester, helper):
+            raise WorkflowError(
+                'You cannot help with this request.',
+                status_code=409,
+            )
+        if self.is_high_risk_request(request) and not self.is_high_risk_qualified(
+            helper
+        ):
+            raise WorkflowError(HIGH_RISK_QUALIFICATION_MESSAGE, status_code=409)
 
         match_candidate = self.score_helper(
             request=request,
@@ -464,30 +475,27 @@ class WorkflowOperationsMixin:
             allow_urgency_fallback=False,
         )
         if match_candidate is None:
+            # Scoring is for ranking suggestions. A helper who was shown the
+            # request, because it is public or it was shared with them, can
+            # still take it even if their availability or categories changed.
             visibility = str(request.get('visibility', 'restricted')).strip()
-            if visibility != 'public':
+            shared_with_helper = any(
+                match.get('requestId') == request_id
+                and match.get('helperId') == self.current_user_id
+                and match.get('status') not in {'declined', 'disputed'}
+                for match in self.matches
+            )
+            if visibility != 'public' and not shared_with_helper:
                 raise WorkflowError(
-                    'This request is no longer available for matching.',
+                    'This request was only shared with selected helpers.',
                     status_code=409,
                 )
 
-            if not self.can_users_interact(requester, helper) or not self.is_active_helper(
-                helper
-            ):
-                raise WorkflowError(
-                    'This request is no longer available for matching.',
-                    status_code=409,
-                )
-
-            if self.is_high_risk_request(request) and not self.is_high_risk_qualified(
-                helper
-            ):
-                raise WorkflowError(
-                    'This request is no longer available for matching.',
-                    status_code=409,
-                )
-
-            public_reasons = ['Public request volunteer']
+            public_reasons = (
+                ['Public request volunteer']
+                if visibility == 'public'
+                else ['Shared with you by the matching engine']
+            )
             helper_area = str(helper.get('area', '')).strip()
             helper_city = str(helper.get('city', '')).strip()
             if helper_area:
@@ -646,8 +654,8 @@ class WorkflowOperationsMixin:
             )
             if not credit_free:
                 requester_message += (
-                    f' {REQUEST_CREDIT_COST} help credits were used: '
-                    f'{ASK_CREDIT_COST} for asking and {RECEIVE_CREDIT_COST} for receiving help. '
+                    f' {REQUEST_CREDIT_COST} {_credit_word(REQUEST_CREDIT_COST)} '
+                    f"{'was' if REQUEST_CREDIT_COST == 1 else 'were'} used. "
                     f"You have {requester_credits['available']} available."
                 )
             self.notifications.insert(
@@ -670,7 +678,8 @@ class WorkflowOperationsMixin:
                     'type': 'helpCompleted',
                     'title': f'You earned {HELP_EARNED_CREDITS} {_credit_word(HELP_EARNED_CREDITS)}',
                     'message': f'Thanks for helping with {title}. '
-                    f"You now have {helper_credits['available']} credits to use when you need help.",
+                    f"You now have {helper_credits['available']} "
+                    f"{_credit_word(helper_credits['available'])} to use when you need help.",
                     'createdAt': now,
                     'isRead': False,
                 },
@@ -683,21 +692,13 @@ class WorkflowOperationsMixin:
                 }
             )
             if not credit_free:
-                updated_request['actionLog'].extend(
-                    [
-                        {
-                            'actorId': requester_id,
-                            'action': f'Requester used {ASK_CREDIT_COST} '
-                            f'{_credit_word(ASK_CREDIT_COST)} for asking',
-                            'createdAt': now,
-                        },
-                        {
-                            'actorId': requester_id,
-                            'action': f'Requester used {RECEIVE_CREDIT_COST} '
-                            f'{_credit_word(RECEIVE_CREDIT_COST)} for receiving help',
-                            'createdAt': now,
-                        },
-                    ]
+                updated_request['actionLog'].append(
+                    {
+                        'actorId': requester_id,
+                        'action': f'Requester used {REQUEST_CREDIT_COST} '
+                        f'{_credit_word(REQUEST_CREDIT_COST)}',
+                        'createdAt': now,
+                    }
                 )
         return {'confirmed': True, 'requestId': request_id}
 

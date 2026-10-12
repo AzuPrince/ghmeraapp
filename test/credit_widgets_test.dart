@@ -6,8 +6,11 @@ import 'package:ghmera_app/core/ui/ghmera_components.dart';
 import 'package:ghmera_app/core/ui/ghmera_theme.dart';
 import 'package:ghmera_app/features/credits/presentation/widgets/credit_wallet_card.dart';
 
-Future<void> _pumpOnSmallPhone(WidgetTester tester, Widget child) async {
-  tester.view.physicalSize = const Size(320, 900);
+Future<void> _pumpOnSmallPhone(WidgetTester tester, Widget child) =>
+    _pumpAt(tester, const Size(320, 900), child);
+
+Future<void> _pumpAt(WidgetTester tester, Size size, Widget child) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -44,6 +47,17 @@ HelpRequestEntity _request(
   );
 }
 
+HelpCreditSummary _summaryWithAvailable(int credits) {
+  return HelpCreditSummary(
+    earned: credits > startingHelpCredits ? credits - startingHelpCredits : 0,
+    spent: credits < startingHelpCredits ? startingHelpCredits - credits : 0,
+    held: 0,
+  );
+}
+
+Iterable<GhCoin> _dimmedCoins(WidgetTester tester) =>
+    tester.widgetList<GhCoin>(find.byType(GhCoin)).where((coin) => coin.dimmed);
+
 void main() {
   testWidgets('wallet shows available credits and holds on a small phone', (
     tester,
@@ -54,19 +68,109 @@ void main() {
       tester,
       CreditWalletCard(
         summary: summary,
-        message: 'You have 3 credits ready to use.',
+        message: 'You have 4 credits ready to use.',
       ),
     );
 
-    expect(find.text('3'), findsOneWidget);
+    expect(find.text('4'), findsOneWidget);
     expect(find.text('credits available'), findsOneWidget);
     expect(find.text('On hold'), findsOneWidget);
-    expect(find.text('2'), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
     expect(
-      find.text('Each request uses 2: 1 to ask, 1 to receive'),
+      find.text('Each request uses 1 credit'),
       findsOneWidget,
     );
+    expect(find.byType(GhCoin), findsNWidgets(4));
+    expect(_dimmedCoins(tester), isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('wallet coin row never implies a maximum balance', (
+    tester,
+  ) async {
+    const screens = <String, Size>{
+      'small phone': Size(320, 900),
+      'phone': Size(375, 812),
+      'iPad': Size(1024, 1366),
+    };
+    for (final MapEntry(key: screen, value: size) in screens.entries) {
+      for (final credits in const [0, 1, 3, 5, 12, 150]) {
+        final reason = '$credits credits on $screen';
+        await _pumpAt(
+          tester,
+          size,
+          CreditWalletCard(
+            summary: _summaryWithAvailable(credits),
+            message: 'Keep helping to earn more.',
+          ),
+        );
+
+        expect(tester.takeException(), isNull, reason: reason);
+        expect(find.text('$credits'), findsWidgets, reason: reason);
+        expect(
+          find.text(credits == 1 ? 'credit available' : 'credits available'),
+          findsOneWidget,
+          reason: reason,
+        );
+        expect(
+          find.text('No limit · +1 for every help you give'),
+          findsOneWidget,
+          reason: reason,
+        );
+        expect(
+          find.byType(GhCoin),
+          findsNWidgets(credits < 5 ? credits : 5),
+          reason: reason,
+        );
+        expect(_dimmedCoins(tester), isEmpty, reason: reason);
+        expect(
+          find.descendant(
+            of: find.byType(GhCoinStack),
+            matching: credits > 5
+                ? find.text('+${credits - 5}')
+                : find.textContaining('+'),
+          ),
+          credits > 5 ? findsOneWidget : findsNothing,
+          reason: reason,
+        );
+      }
+    }
+  });
+
+  testWidgets('credit chip shows large balances without overflow or slots', (
+    tester,
+  ) async {
+    await _pumpOnSmallPhone(
+      tester,
+      Container(
+        color: GhColors.brand,
+        padding: const EdgeInsets.all(12),
+        child: const Row(
+          children: [
+            Expanded(child: Text('150 people need a hand')),
+            SizedBox(width: 12),
+            GhCreditChip(credits: 150, onDark: true),
+          ],
+        ),
+      ),
+    );
+
+    expect(find.text('150 credits'), findsOneWidget);
+    expect(find.byType(GhCoin), findsOneWidget);
+    expect(_dimmedCoins(tester), isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('coin stack caps the drawn coins, not the balance', (
+    tester,
+  ) async {
+    await _pumpOnSmallPhone(tester, const GhCoinStack(credits: 150));
     expect(find.byType(GhCoin), findsNWidgets(5));
+    expect(find.text('+145'), findsOneWidget);
+    expect(find.bySemanticsLabel('150 credits'), findsOneWidget);
+
+    await _pumpOnSmallPhone(tester, const GhCoinStack(credits: 0));
+    expect(find.byType(GhCoin), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -74,8 +178,7 @@ void main() {
     tester,
   ) async {
     final summary = HelpCreditSummary.forUser('me', [
-      _request('r1'),
-      _request('r2'),
+      for (var index = 0; index < 5; index++) _request('r$index'),
     ]);
 
     await _pumpOnSmallPhone(
@@ -83,9 +186,13 @@ void main() {
       CreditWalletCard(summary: summary, message: 'Help someone to post.'),
     );
 
-    expect(find.text('1'), findsOneWidget);
-    expect(find.text('credit available'), findsOneWidget);
-    expect(find.text('Need 1 more to post · requests need 2'), findsOneWidget);
+    expect(find.text('credits available'), findsOneWidget);
+    expect(find.text('5'), findsOneWidget);
+    expect(find.byType(GhCoin), findsNothing);
+    expect(
+      find.text('Need 1 more to post · requests need 1 credit'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -93,7 +200,7 @@ void main() {
     tester,
   ) async {
     final summary = HelpCreditSummary.forUser('me', [
-      for (var index = 0; index < 3; index++)
+      for (var index = 0; index < 6; index++)
         _request(
           'done$index',
           status: HelpRequestStatus.completed,

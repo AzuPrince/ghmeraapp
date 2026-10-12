@@ -507,6 +507,94 @@ class GhCoin extends StatelessWidget {
   }
 }
 
+/// A small pile of coins for a credit balance. Balances have no upper limit,
+/// so it shows at most [maxCoins] coins and a "+N" badge for the rest instead
+/// of a fixed row of slots.
+class GhCoinStack extends StatelessWidget {
+  const GhCoinStack({
+    super.key,
+    required this.credits,
+    this.size = 26,
+    this.maxCoins = 5,
+    this.onDark = false,
+  }) : assert(maxCoins > 0);
+
+  final int credits;
+  final double size;
+  final int maxCoins;
+  final bool onDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = credits < 0 ? 0 : credits;
+    final coins = shown < maxCoins ? shown : maxCoins;
+    final extra = shown - coins;
+    if (coins == 0) {
+      return const SizedBox.shrink();
+    }
+    final step = size * 0.62;
+
+    return Semantics(
+      label: shown == 1 ? '1 credit' : '$shown credits',
+      excludeSemantics: true,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: size + step * (coins - 1),
+            height: size,
+            child: Stack(
+              children: [
+                for (var index = 0; index < coins; index++)
+                  Positioned(
+                    left: step * index,
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: Color(0x40000000),
+                            blurRadius: 3,
+                            offset: Offset(-1.5, 0),
+                          ),
+                        ],
+                      ),
+                      child: GhCoin(size: size),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (extra > 0) ...[
+            const SizedBox(width: 6),
+            Container(
+              height: size,
+              padding: EdgeInsets.symmetric(horizontal: size * 0.36),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: onDark
+                    ? Colors.white.withValues(alpha: 0.18)
+                    : GhColors.creditSoft,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '+$extra',
+                maxLines: 1,
+                style: TextStyle(
+                  color: onDark ? Colors.white : GhColors.creditDeep,
+                  fontSize: size * 0.5,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// Compact track record shown next to a requester so helpers know who they
 /// are helping.
 class GhHelpStatsStrip extends StatelessWidget {

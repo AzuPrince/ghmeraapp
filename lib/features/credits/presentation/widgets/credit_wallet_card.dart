@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../../../app/services/help_credits.dart';
@@ -26,11 +24,8 @@ class CreditWalletCard extends StatelessWidget {
     final postingNote = summary.shortfall > 0
         ? '${summary.shortfall} below zero · help someone to get back on track'
         : summary.canAffordRequest
-        ? 'Each request uses $requestCreditCost: $askCreditCost to ask, $receiveCreditCost to receive'
-        : 'Need ${summary.creditsNeededToPost} more to post · requests need $requestCreditCost';
-    final coinSlots = math
-        .max(startingHelpCredits, summary.balance)
-        .clamp(0, 10);
+        ? 'Each request uses ${creditCountLabel(requestCreditCost)}'
+        : 'Need ${summary.creditsNeededToPost} more to post · requests need ${creditCountLabel(requestCreditCost)}';
 
     return Container(
       width: double.infinity,
@@ -143,11 +138,21 @@ class CreditWalletCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    for (var index = 0; index < coinSlots; index++)
-                      GhCoin(size: 26, dimmed: index >= available),
+                    if (available > 0)
+                      ExcludeSemantics(
+                        child: GhCoinStack(credits: available, onDark: true),
+                      ),
+                    Text(
+                      'No limit · +$helpEarnedCredits for every help you give',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -203,12 +208,17 @@ class _WalletStat extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                maxLines: 1,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
             Text(

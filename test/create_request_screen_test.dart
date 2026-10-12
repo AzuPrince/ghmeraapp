@@ -71,7 +71,7 @@ void main() {
     expect(positionBeforeSubmit, greaterThan(0));
 
     await tester.tap(
-      find.text('Post request · uses $requestCreditCost credits'),
+      find.text('Post request · uses 1 credit'),
     );
     await tester.pumpAndSettle();
 

@@ -67,7 +67,7 @@ class _CreditsWelcomeSheet extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Every member starts with $startingHelpCredits. Everyone gives a little and gets a little, so Ghmera stays fair.',
+              'Every member starts with $startingHelpCredits, and there is no limit to how many you can earn. Everyone gives a little and gets a little, so Ghmera stays fair.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: GhColors.inkSoft,
@@ -79,16 +79,16 @@ class _CreditsWelcomeSheet extends StatelessWidget {
             const _Rule(
               icon: Icons.campaign_outlined,
               color: GhColors.sky,
-              title:
-                  'Asking costs $askCreditCost, receiving costs $receiveCreditCost',
+              title: 'Each request uses $requestCreditCost credit',
               text:
-                  'Posting puts $requestCreditCost credits on hold. They are only used once you confirm the help is done.',
+                  'Posting puts $requestCreditCost credit on hold. It is only used once you confirm the help is done.',
             ),
             const _Rule(
               icon: Icons.volunteer_activism_rounded,
               color: GhColors.brand,
               title: 'Earn $helpEarnedCredits credit for every help you give',
-              text: 'Browse Give Help to find people near you.',
+              text:
+                  'No limit: every help you complete earns $helpEarnedCredits more credit. Browse Give Help to find people near you.',
             ),
             const _Rule(
               icon: Icons.emergency_outlined,
@@ -158,35 +158,28 @@ class _HelpCreditsSheet extends StatelessWidget {
           color: GhColors.credit,
           title: 'Start with $startingHelpCredits credits',
           text:
-              'Every new member receives $startingHelpCredits welcome credits.',
+              'Every new member receives $startingHelpCredits welcome credits. That is where you start, not a limit.',
         ),
         const _Rule(
           icon: Icons.campaign_outlined,
           color: GhColors.sky,
-          title: 'Asking for help costs $askCreditCost credit',
+          title: 'Each request uses $requestCreditCost credit',
           text:
-              'You need $requestCreditCost available to post, so the receiving charge is always covered. Both stay on hold while people respond.',
-        ),
-        const _Rule(
-          icon: Icons.inventory_2_outlined,
-          color: GhColors.plum,
-          title: 'Receiving help costs $receiveCreditCost more',
-          text:
-              'Once you and your helper both confirm the help is done, both held credits are used: $askCreditCost for asking and $receiveCreditCost for receiving.',
+              'You need $requestCreditCost available to post. It stays on hold while people respond, and is used once you and your helper both confirm the help is done.',
         ),
         const _Rule(
           icon: Icons.volunteer_activism_rounded,
           color: GhColors.brand,
-          title: 'Helping earns $helpEarnedCredits credit',
+          title: 'Helping earns $helpEarnedCredits credit, with no limit',
           text:
-              'Every request you complete for someone else adds $helpEarnedCredits credit to your balance.',
+              'No limit: every help you complete earns $helpEarnedCredits more credit. The more you help, the more you earn.',
         ),
         const _Rule(
           icon: Icons.undo_rounded,
           color: GhColors.inkSoft,
-          title: 'Canceled requests refund both',
+          title: 'Canceled requests are refunded',
           text:
-              'Deleting an open request or canceling before completion returns both held credits.',
+              'Deleting an open request or canceling before completion returns the held credit.',
         ),
         const _Rule(
           icon: Icons.emergency_outlined,
@@ -277,15 +270,10 @@ class _LedgerRow extends StatelessWidget {
         GhColors.brand,
         'Earned',
       ),
-      HelpCreditEntryKind.asked => (
-        Icons.campaign_outlined,
-        GhColors.sky,
-        'Used for asking',
-      ),
       HelpCreditEntryKind.received => (
         Icons.inventory_2_outlined,
         GhColors.plum,
-        'Used for receiving help',
+        'Used for your request',
       ),
       HelpCreditEntryKind.held => (
         Icons.hourglass_top_rounded,

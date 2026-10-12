@@ -8,10 +8,17 @@ import 'package:http/http.dart' as http;
 import '../../firebase_options.dart';
 
 class BackendWorkflowApiException implements Exception {
-  const BackendWorkflowApiException(this.message, {this.statusCode});
+  const BackendWorkflowApiException(
+    this.message, {
+    this.statusCode,
+    this.database,
+  });
 
   final String message;
   final int? statusCode;
+
+  /// The server's corrected app state, sent when this copy was out of date.
+  final Map<String, dynamic>? database;
 
   @override
   String toString() {
@@ -83,9 +90,11 @@ class BackendWorkflowApiService {
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      final errorDatabase = decoded['database'];
       throw BackendWorkflowApiException(
         decoded['error']?.toString() ?? 'Workflow API request failed.',
         statusCode: response.statusCode,
+        database: errorDatabase is Map<String, dynamic> ? errorDatabase : null,
       );
     }
 

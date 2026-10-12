@@ -14,7 +14,7 @@ class HomeMenuScreen extends StatelessWidget {
         icon: Icons.toll_rounded,
         title: 'How help credits work',
         subtitle:
-            'Start with 5. Asking uses 1, receiving help uses 1, helping earns 1.',
+            'Start with 5. Each request uses 1, each help you give earns 1, with no limit.',
         builder: (_) => const SizedBox.shrink(),
         onOpen: showHelpCreditsSheet,
       ),
@@ -250,7 +250,7 @@ class AboutGhmeraScreen extends StatelessWidget {
               _DetailSection(
                 title: 'Help credits',
                 text:
-                    'Every member starts with 5 help credits. Asking and receiving are charged separately: 1 credit for asking and 1 for receiving help. You need 2 available to post a request, and both stay on hold while it is open. Both are used once both people confirm the help is done, and both are returned if the request is deleted or canceled first. Completing help for someone else earns 1 credit. Emergency non-medical support requests never use credits. Credits have no cash value and cannot be bought, sold, or transferred.',
+                    'Every member starts with 5 help credits. Each request uses 1 credit: you need 1 available to post, and it stays on hold while the request is open. It is used once both people confirm the help is done, and returned if the request is deleted or canceled first. Completing help for someone else earns 1 credit, with no limit on how many you can earn. Emergency non-medical support requests never use credits. Credits have no cash value and cannot be bought, sold, or transferred.',
               ),
               SizedBox(height: 12),
               _DetailSection(

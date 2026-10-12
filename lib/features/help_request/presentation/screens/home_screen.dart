@@ -781,7 +781,7 @@ class _HomeScreenState extends State<HomeScreen> {
       message: canceled
           ? isCreditFreeRequest(request)
                 ? 'Request canceled.'
-                : 'Request canceled. Both held credits were returned.'
+                : 'Request canceled. Your held credit was returned.'
           : appState.lastWorkflowError ?? 'This request could not be canceled.',
       type: canceled ? SnackBarType.success : SnackBarType.error,
     );
@@ -994,7 +994,7 @@ class _HomeScreenState extends State<HomeScreen> {
           message: deleted
               ? isCreditFreeRequest(request)
                     ? 'Request deleted.'
-                    : 'Request deleted. Both held credits are available again.'
+                    : 'Request deleted. Your held credit is available again.'
               : appState.lastWorkflowError ??
                     'This request could not be deleted.',
           type: deleted ? SnackBarType.success : SnackBarType.error,
@@ -1832,7 +1832,8 @@ class _RequestDetailsScreen extends StatelessWidget {
         bottom: false,
         child: Consumer<GhmeraAppState>(
           builder: (context, appState, _) {
-            final request = appState.requestById(initialRequest.id);
+            final request =
+                appState.findRequestById(initialRequest.id) ?? initialRequest;
             final requester = appState.userById(request.requesterId);
             final helper = appState.helperForRequest(request);
             final protectedThread = appState.threadForRequest(request.id);
@@ -1852,6 +1853,7 @@ class _RequestDetailsScreen extends StatelessWidget {
               request,
             );
             final isRequester = request.requesterId == appState.currentUserId;
+            final canOfferHelp = appState.canCurrentUserOfferHelp(request.id);
             final hasConfirmedCompletion = appState
                 .hasCurrentUserConfirmedRequestCompletion(request);
             final hasSubmittedReview = appState
@@ -1997,14 +1999,16 @@ class _RequestDetailsScreen extends StatelessWidget {
                     user: helper,
                     stats: appState.helpStatsForUser(helper.id),
                   ),
-                const SizedBox(height: 14),
-                _RequestCreditNote(
-                  request: request,
-                  isRequester: isRequester,
-                  requesterFirstName: requester.fullName.split(' ').first,
-                  isCurrentUserHelper:
-                      request.acceptedHelperId == appState.currentUserId,
-                ),
+                if (isParticipant || canOfferHelp) ...[
+                  const SizedBox(height: 14),
+                  _RequestCreditNote(
+                    request: request,
+                    isRequester: isRequester,
+                    requesterFirstName: requester.fullName.split(' ').first,
+                    isCurrentUserHelper:
+                        request.acceptedHelperId == appState.currentUserId,
+                  ),
+                ],
                 if (request.isHighRisk) ...[
                   const SizedBox(height: 10),
                   const GhInfoBanner(
@@ -2068,7 +2072,7 @@ class _RequestDetailsScreen extends StatelessWidget {
                     ),
                   ),
                 ],
-                if (request.acceptedHelperId != null) ...[
+                if (isParticipant && request.acceptedHelperId != null) ...[
                   const SizedBox(height: 22),
                   const GhSectionHeader(
                     title: 'Privacy',
@@ -2160,7 +2164,8 @@ class _RequestDetailsScreen extends StatelessWidget {
       ),
       bottomNavigationBar: Consumer<GhmeraAppState>(
         builder: (context, appState, _) {
-          final request = appState.requestById(initialRequest.id);
+          final liveRequest = appState.findRequestById(initialRequest.id);
+          final request = liveRequest ?? initialRequest;
           final protectedThread = appState.threadForRequest(request.id);
           final otherParticipant = appState.otherParticipantForRequest(request);
           final isParticipant = appState.isCurrentUserParticipantForRequest(
@@ -2178,16 +2183,25 @@ class _RequestDetailsScreen extends StatelessWidget {
           final isHelpGiverRating =
               request.requesterId == appState.currentUserId &&
               request.acceptedHelperId == otherParticipant?.id;
-          final helperCanVolunteer =
-              request.requesterId != appState.currentUserId &&
-              request.status != HelpRequestStatus.completed &&
-              request.status != HelpRequestStatus.canceled &&
-              (request.acceptedHelperId == null ||
-                  request.acceptedHelperId == appState.currentUserId);
-          final alreadyMatchedAsHelper =
-              request.acceptedHelperId == appState.currentUserId;
+          final canOfferHelp = appState.canCurrentUserOfferHelp(request.id);
           final showChat =
-              protectedThread != null || request.acceptedHelperId != null;
+              isParticipant &&
+              (protectedThread != null || request.acceptedHelperId != null);
+          final String? settledNotice;
+          if (isParticipant) {
+            settledNotice = null;
+          } else if (liveRequest == null) {
+            settledNotice = 'This request is no longer available.';
+          } else if (request.acceptedHelperId != null) {
+            settledNotice = 'Someone is already helping with this request.';
+          } else if (!appState.isRequestOpenForHelp(request)) {
+            settledNotice = 'This request is no longer open for help.';
+          } else if (appState.currentUserNeedsVerificationToHelp(request)) {
+            settledNotice =
+                'This request needs extra safety checks, so only ID-verified or trusted helpers can take it.';
+          } else {
+            settledNotice = null;
+          }
 
           return DecoratedBox(
             decoration: const BoxDecoration(
@@ -2205,7 +2219,12 @@ class _RequestDetailsScreen extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (helperCanVolunteer || showChat)
+                        if (settledNotice != null)
+                          GhInfoBanner(
+                            icon: Icons.volunteer_activism_outlined,
+                            message: settledNotice,
+                          ),
+                        if (canOfferHelp || showChat)
                           Row(
                             children: [
                               if (showChat)
@@ -2234,14 +2253,17 @@ class _RequestDetailsScreen extends StatelessWidget {
                                     ),
                                   ),
                                 ),
-                              if (showChat &&
-                                  helperCanVolunteer &&
-                                  !alreadyMatchedAsHelper)
+                              if (showChat && canOfferHelp)
                                 const SizedBox(width: 10),
-                              if (helperCanVolunteer && !alreadyMatchedAsHelper)
+                              if (canOfferHelp)
                                 Expanded(
                                   child: FilledButton.icon(
                                     onPressed: () async {
+                                      if (!appState.canCurrentUserOfferHelp(
+                                        request.id,
+                                      )) {
+                                        return;
+                                      }
                                       final matched = await appState
                                           .volunteerForHelpRequest(request.id);
                                       if (!context.mounted) {
@@ -2355,7 +2377,8 @@ class _RequestDetailsScreen extends StatelessWidget {
                               'Report ${otherParticipant.fullName.split(' ').first}',
                             ),
                           ),
-                        if (!helperCanVolunteer &&
+                        if (settledNotice == null &&
+                            !canOfferHelp &&
                             !showChat &&
                             otherParticipant == null)
                           Text(
@@ -2548,10 +2571,10 @@ class _RequestCreditNote extends StatelessWidget {
       message = 'Emergency requests are free. No credits are used.';
     } else if (isRequester) {
       message = completed
-          ? '$requestCreditCost credits were used when this help was completed: $askCreditCost for asking and $receiveCreditCost for receiving help.'
+          ? '${creditCountLabel(requestCreditCost)} was used when this help was completed.'
           : canceled
-          ? 'This request was canceled, so both held credits were returned to you.'
-          : '$requestCreditCost credits are on hold for this request: $askCreditCost for asking and $receiveCreditCost for receiving help. Both are used once you confirm the help is done, or returned if you cancel.';
+          ? 'This request was canceled, so your held credit was returned to you.'
+          : '${creditCountLabel(requestCreditCost)} is on hold for this request. It is used once you confirm the help is done, or returned if you cancel.';
     } else if (isCurrentUserHelper) {
       message = completed
           ? 'You earned $helpEarnedCredits credit for this help. Thank you!'
@@ -4019,7 +4042,7 @@ class _RequestsTab extends StatelessWidget {
                 title: 'Waiting for a helper',
                 subtitle: waitingRequests.isEmpty
                     ? null
-                    : 'Each open request keeps $requestCreditCost credits on hold: $askCreditCost to ask, $receiveCreditCost to receive.',
+                    : 'Each open request keeps ${creditCountLabel(requestCreditCost)} on hold.',
                 count: waitingRequests.isEmpty ? null : waitingRequests.length,
               ),
               if (waitingRequests.isEmpty)
@@ -4415,7 +4438,7 @@ class _MyRequestCard extends StatelessWidget {
                     : Icons.hourglass_top_rounded,
                 label: isFree
                     ? 'Free emergency request'
-                    : '$requestCreditCost credits on hold',
+                    : '${creditCountLabel(requestCreditCost)} on hold',
                 foreground: isFree ? GhColors.coral : GhColors.creditDeep,
                 background: isFree ? GhColors.coralSoft : GhColors.creditSoft,
               ),
@@ -5014,10 +5037,16 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final appState = context.watch<GhmeraAppState>();
     return FutureBuilder<_RequestLocationsMapData>(
       future: _mapDataFuture,
       builder: (context, snapshot) {
         final data = snapshot.data;
+        final requestMarkers = (data?.requestMarkers ?? const [])
+            .where(
+              (marker) => appState.isCommunityRequestStillOpen(marker.request.id),
+            )
+            .toList();
         final children = <Widget>[
           SizedBox(
             height: 40,
@@ -5079,11 +5108,18 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
                   'The request locations map could not be loaded right now. Try again in a moment.',
             ),
           );
-        } else if (data == null || !data.hasMap) {
+        } else if (data == null ||
+            data.mapCenter == null ||
+            requestMarkers.isEmpty) {
           children.add(
             _EmptyStateCard(
               title: 'No mappable requests yet',
-              message: _emptyStateMessage(),
+              message: _emptyStateMessage(
+                hasOpenRequests: widget.requestEntries.any(
+                  (entry) =>
+                      appState.isCommunityRequestStillOpen(entry.request.id),
+                ),
+              ),
             ),
           );
         } else {
@@ -5097,7 +5133,7 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
                     initialCameraFit: CameraFit.coordinates(
                       coordinates: <LatLng>[
                         ?data.currentUserPoint,
-                        for (final marker in data.requestMarkers) marker.point,
+                        for (final marker in requestMarkers) marker.point,
                       ],
                       padding: const EdgeInsets.all(48),
                       maxZoom: 13,
@@ -5118,7 +5154,7 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
                             height: 72,
                             child: const _CurrentNeighborhoodMarker(),
                           ),
-                        for (final marker in data.requestMarkers)
+                        for (final marker in requestMarkers)
                           Marker(
                             point: marker.point,
                             width: 88,
@@ -5149,18 +5185,12 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
               ),
             ),
             const SizedBox(height: 10),
-            for (
-              var index = 0;
-              index < data.requestMarkers.length;
-              index++
-            ) ...[
+            for (var index = 0; index < requestMarkers.length; index++) ...[
               _RequestLocationListTile(
-                marker: data.requestMarkers[index],
-                onTap: () =>
-                    _handleRequestTap(data.requestMarkers[index].request),
+                marker: requestMarkers[index],
+                onTap: () => _handleRequestTap(requestMarkers[index].request),
               ),
-              if (index < data.requestMarkers.length - 1)
-                const SizedBox(height: 10),
+              if (index < requestMarkers.length - 1) const SizedBox(height: 10),
             ],
           ]);
         }
@@ -5311,8 +5341,8 @@ class _RequestLocationsMapSheetState extends State<_RequestLocationsMapSheet> {
     return 'Tap a request on the map to review it.';
   }
 
-  String _emptyStateMessage() {
-    if (widget.requestEntries.isEmpty) {
+  String _emptyStateMessage({required bool hasOpenRequests}) {
+    if (!hasOpenRequests) {
       return 'No open help requests with visible locations are ready to map right now.';
     }
 
@@ -5334,8 +5364,6 @@ class _RequestLocationsMapData {
   final LatLng? currentUserPoint;
   final LatLng? mapCenter;
   final List<_RequestLocationMarkerData> requestMarkers;
-
-  bool get hasMap => requestMarkers.isNotEmpty && mapCenter != null;
 }
 
 class _RequestLocationMarkerData {

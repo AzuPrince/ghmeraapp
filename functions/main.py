@@ -5,6 +5,7 @@ Includes custom SMTP email verification code sending and password reset features
 
 from __future__ import annotations
 
+import copy
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from html import escape
@@ -29,6 +30,10 @@ if str(FUNCTIONS_ROOT) not in sys.path:
     sys.path.insert(0, str(FUNCTIONS_ROOT))
 
 from workflow_api import WorkflowError, apply_workflow_operation
+from workflow_backend.operations import (
+    REQUEST_ALREADY_TAKEN_MESSAGE,
+    REQUEST_CLOSED_MESSAGE,
+)
 
 initialize_app()
 
@@ -46,6 +51,15 @@ DEFAULT_SMTP_PORT = 465
 DEFAULT_SMTP_USERNAME = "info@peatechservice.com"
 DEFAULT_SMTP_FROM_EMAIL = "mail@peatechservice.com"
 DEFAULT_SMTP_FROM_NAME = "PEATECH SERVICES LLC"
+
+GLOBAL_APP_STATE_COLLECTION = "global_app_state"
+GLOBAL_APP_STATE_DOCUMENT = "live"
+MIRRORED_REQUESTS_COLLECTION = "Users_requests"
+MIRRORED_REQUESTS_DOCUMENT = "sent request"
+HELPER_MATCHING_OPERATIONS = frozenset(
+    {"volunteer_for_help_request", "request_helper_for_my_request"}
+)
+OPEN_REQUEST_STATUSES = frozenset({"open", "matching"})
 
 
 def _registration_code_ref(email: str):
@@ -730,6 +744,203 @@ def _secure_workflow_body(
     return secured_body
 
 
+def _iter_bucket_requests(buckets: dict[str, Any]):
+    for bucket_key, raw_bucket in buckets.items():
+        if str(bucket_key).startswith('_') or not isinstance(raw_bucket, dict):
+            continue
+        raw_requests = raw_bucket.get('requests')
+        if not isinstance(raw_requests, list):
+            continue
+        for index, raw_request in enumerate(raw_requests):
+            if isinstance(raw_request, dict):
+                yield str(bucket_key), index, raw_request
+
+
+def _find_bucket_request(
+    buckets: dict[str, Any],
+    *,
+    request_id: str,
+    requester_id: str | None = None,
+) -> dict[str, Any] | None:
+    for _, _, request in _iter_bucket_requests(buckets):
+        if str(request.get('id') or '').strip() != request_id:
+            continue
+        if (
+            requester_id is not None
+            and str(request.get('requesterId') or '').strip() != requester_id
+        ):
+            continue
+        return request
+    return None
+
+
+def _load_stored_request_copies(
+    *,
+    request_id: str,
+    requester_id: str | None,
+) -> list[dict[str, Any]]:
+    """Return the request as saved in the global app state and in the mirror."""
+    db = firestore.client()
+    copies: list[dict[str, Any]] = []
+
+    global_snapshot = (
+        db.collection(GLOBAL_APP_STATE_COLLECTION)
+        .document(GLOBAL_APP_STATE_DOCUMENT)
+        .get()
+    )
+    if global_snapshot.exists:
+        raw_database = (global_snapshot.to_dict() or {}).get('database')
+        if isinstance(raw_database, dict):
+            stored = _find_bucket_request(
+                raw_database,
+                request_id=request_id,
+                requester_id=requester_id,
+            )
+            if stored is not None:
+                copies.append(stored)
+
+    mirrored_snapshot = (
+        db.collection(MIRRORED_REQUESTS_COLLECTION)
+        .document(MIRRORED_REQUESTS_DOCUMENT)
+        .get()
+    )
+    if mirrored_snapshot.exists:
+        stored = _find_bucket_request(
+            mirrored_snapshot.to_dict() or {},
+            request_id=request_id,
+            requester_id=requester_id,
+        )
+        if stored is not None:
+            copies.append(stored)
+
+    return copies
+
+
+def _settled_request_message(
+    request: dict[str, Any],
+    *,
+    allowed_helper_id: str,
+) -> str | None:
+    accepted_helper_id = str(request.get('acceptedHelperId') or '').strip()
+    if accepted_helper_id:
+        if accepted_helper_id == allowed_helper_id:
+            return None
+        return REQUEST_ALREADY_TAKEN_MESSAGE
+
+    status = str(request.get('status') or 'open').strip()
+    if status not in OPEN_REQUEST_STATUSES:
+        return REQUEST_CLOSED_MESSAGE
+    return None
+
+
+def _database_with_request(
+    raw_database: dict[str, Any],
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    """Copy the database with the saved request swapped in, or added to the
+    requester's bucket when the caller's copy is missing it."""
+    request_id = str(request.get('id') or '').strip()
+    requester_id = str(request.get('requesterId') or '').strip()
+    updated = dict(raw_database)
+    for bucket_key, index, local_request in _iter_bucket_requests(raw_database):
+        if (
+            str(local_request.get('id') or '').strip() != request_id
+            or str(local_request.get('requesterId') or '').strip() != requester_id
+        ):
+            continue
+
+        bucket = dict(raw_database[bucket_key])
+        requests = list(bucket['requests'])
+        requests[index] = copy.deepcopy(request)
+        bucket['requests'] = requests
+        updated[bucket_key] = bucket
+        return updated
+
+    for bucket_key, raw_bucket in raw_database.items():
+        if str(bucket_key).startswith('_') or not isinstance(raw_bucket, dict):
+            continue
+        raw_user = raw_bucket.get('user')
+        if not isinstance(raw_user, dict):
+            continue
+        if str(raw_user.get('id') or '').strip() != requester_id:
+            continue
+
+        bucket = dict(raw_bucket)
+        raw_requests = bucket.get('requests')
+        requests = list(raw_requests) if isinstance(raw_requests, list) else []
+        requests.insert(0, copy.deepcopy(request))
+        bucket['requests'] = requests
+        updated[str(bucket_key)] = bucket
+        return updated
+    return updated
+
+
+def _apply_stored_request_state(secured_body: dict[str, Any]) -> dict[str, Any]:
+    """Match helpers against the request saved in Firestore.
+
+    Clients send their whole local database, which can be stale: it may miss
+    a brand-new request or still show one that someone else already took.
+    """
+    operation = str(secured_body.get('operation') or '').strip()
+    if operation not in HELPER_MATCHING_OPERATIONS:
+        return secured_body
+
+    raw_database = secured_body['database']
+    raw_payload = secured_body.get('payload')
+    payload = raw_payload if isinstance(raw_payload, dict) else {}
+    request_id = str(payload.get('requestId') or '').strip()
+    if not request_id:
+        return secured_body
+
+    local_request = _find_bucket_request(raw_database, request_id=request_id)
+    requester_id = (
+        str(local_request.get('requesterId') or '').strip()
+        if local_request is not None
+        else None
+    )
+    if operation == 'volunteer_for_help_request':
+        allowed_helper_id = str(secured_body.get('currentUserId') or '').strip()
+    else:
+        allowed_helper_id = str(payload.get('helperId') or '').strip()
+
+    try:
+        stored_copies = _load_stored_request_copies(
+            request_id=request_id,
+            requester_id=requester_id,
+        )
+    except Exception:
+        logger.warning(
+            'Could not read saved request %s; matching on the caller copy.',
+            request_id,
+            exc_info=True,
+        )
+        return secured_body
+
+    # Firestore may not have caught up with a request that was just posted,
+    # so a missing saved copy falls back to the caller's copy.
+    if not stored_copies:
+        return secured_body
+
+    for stored_request in stored_copies:
+        message = _settled_request_message(
+            stored_request,
+            allowed_helper_id=allowed_helper_id,
+        )
+        if message is not None:
+            raise WorkflowError(
+                message,
+                status_code=409,
+                database=_database_with_request(raw_database, stored_request),
+            )
+
+    updated_body = dict(secured_body)
+    updated_body['database'] = _database_with_request(
+        raw_database,
+        stored_copies[0],
+    )
+    return updated_body
+
+
 @https_fn.on_request()
 def workflow_api(req: https_fn.Request) -> https_fn.Response:
     headers = _cors_headers(req.headers.get('Origin'))
@@ -752,6 +963,7 @@ def workflow_api(req: https_fn.Request) -> https_fn.Response:
 
         identity = _require_workflow_identity(req)
         secured_body = _secure_workflow_body(body, identity)
+        secured_body = _apply_stored_request_state(secured_body)
         updated_database, result = apply_workflow_operation(secured_body)
         return https_fn.Response(
             json.dumps({'ok': True, 'database': updated_database, 'result': result}),
@@ -760,8 +972,11 @@ def workflow_api(req: https_fn.Request) -> https_fn.Response:
             content_type='application/json',
         )
     except WorkflowError as error:
+        error_body: dict[str, Any] = {'ok': False, 'error': error.message}
+        if error.database is not None:
+            error_body['database'] = error.database
         return https_fn.Response(
-            json.dumps({'ok': False, 'error': error.message}),
+            json.dumps(error_body),
             status=error.status_code,
             headers=headers,
             content_type='application/json',

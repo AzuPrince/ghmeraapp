@@ -173,7 +173,7 @@ class LoginScreen extends StatelessWidget {
 
                               // Subtitle
                               Text(
-                                'Everyone starts with 5 help credits. Asking for help uses one and receiving it uses one more, and you earn one back every time you help someone else.',
+                                'Everyone starts with 5 help credits. Each request uses one, and you earn one every time you help someone else, with no limit.',
                                 style: theme.textTheme.titleMedium?.copyWith(
                                   color: Colors.white.withValues(alpha: 0.85),
                                   height: 1.55,
