@@ -29,6 +29,7 @@ class CreateRequestScreen extends StatefulWidget {
 
 class _CreateRequestScreenState extends State<CreateRequestScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _descriptionFieldKey = GlobalKey();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
@@ -139,270 +140,277 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         bottom: false,
         child: Form(
           key: _formKey,
-          child: ListView(
+          // A lazy ListView would unmount off-screen fields, and Form.validate
+          // skips unmounted fields.
+          child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
               horizontalPadding,
               4,
               horizontalPadding,
               24,
             ),
-            children: [
-              if (!isEditing) ...[
-                _CreditStatusBanner(
-                  available: credits.available,
-                  isFree: isFree,
-                  locked: requestLocked,
-                  bypass: appState.currentUser.canBypassReciprocity,
-                  onChooseEmergency: () {
-                    setState(() {
-                      _category = RequestCategory.emergencySupport;
-                    });
-                  },
-                ),
-                const SizedBox(height: 16),
-              ],
-              _SectionCard(
-                title: 'What do you need?',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextFormField(
-                      controller: _titleController,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        labelText: 'Short title',
-                        hintText: 'Need help setting up my router tonight',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!isEditing) ...[
+                  _CreditStatusBanner(
+                    available: credits.available,
+                    isFree: isFree,
+                    locked: requestLocked,
+                    bypass: appState.currentUser.canBypassReciprocity,
+                    onChooseEmergency: () {
+                      setState(() {
+                        _category = RequestCategory.emergencySupport;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                _SectionCard(
+                  title: 'What do you need?',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        controller: _titleController,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: const InputDecoration(
+                          labelText: 'Short title',
+                          hintText: 'Need help setting up my router tonight',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().length < 6) {
+                            return 'Enter a short title with enough context.';
+                          }
+                          return null;
+                        },
                       ),
-                      validator: (value) {
-                        if (value == null || value.trim().length < 6) {
-                          return 'Enter a short title with enough context.';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    Text('Category', style: theme.textTheme.titleSmall),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: RequestCategory.values.map((category) {
-                        final style = GhCategoryStyle.of(category);
-                        final selected = _category == category;
-                        return ChoiceChip(
-                          showCheckmark: false,
-                          selected: selected,
-                          avatar: Icon(
-                            style.icon,
-                            size: 18,
-                            color: selected ? Colors.white : style.color,
-                          ),
-                          label: Text(category.label),
-                          labelStyle: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: selected ? Colors.white : GhColors.ink,
-                          ),
-                          selectedColor: style.color,
-                          side: BorderSide(
-                            color: selected ? style.color : GhColors.line,
-                          ),
-                          onSelected: (_) {
-                            setState(() {
-                              _category = category;
-                              if (category ==
-                                  RequestCategory.emotionalSupport) {
-                                _emotionalSupportMode = true;
-                              }
-                            });
-                          },
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 18),
-                    TextFormField(
-                      controller: _descriptionController,
-                      minLines: 4,
-                      maxLines: 6,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        labelText: 'Details',
-                        hintText:
-                            'What kind of help is needed, what should a helper know, and any timing or safety limits?',
-                        alignLabelWithHint: true,
-                      ),
-                      validator: (value) {
-                        if (value == null || value.trim().length < 20) {
-                          return 'Add a little more detail so helpers understand the request.';
-                        }
-                        return null;
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              _SectionCard(
-                title: 'When and where',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'How urgent is it?',
-                      style: theme.textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: UrgencyLevel.values.map((urgency) {
-                        final selected = _urgency == urgency;
-                        final color = ghUrgencyColor(urgency);
-                        return Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                              right: urgency == UrgencyLevel.values.last
-                                  ? 0
-                                  : 8,
+                      const SizedBox(height: 18),
+                      Text('Category', style: theme.textTheme.titleSmall),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: RequestCategory.values.map((category) {
+                          final style = GhCategoryStyle.of(category);
+                          final selected = _category == category;
+                          return ChoiceChip(
+                            showCheckmark: false,
+                            selected: selected,
+                            avatar: Icon(
+                              style.icon,
+                              size: 18,
+                              color: selected ? Colors.white : style.color,
                             ),
-                            child: _UrgencyOption(
-                              label: urgency.label,
-                              color: color,
-                              selected: selected,
-                              onTap: () => setState(() => _urgency = urgency),
+                            label: Text(category.label),
+                            labelStyle: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: selected ? Colors.white : GhColors.ink,
                             ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 18),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      value: _useMyLocation,
-                      onChanged: userLocation.isEmpty
-                          ? null
-                          : (value) {
+                            selectedColor: style.color,
+                            side: BorderSide(
+                              color: selected ? style.color : GhColors.line,
+                            ),
+                            onSelected: (_) {
                               setState(() {
-                                _useMyLocation = value;
-                                if (value) {
-                                  _locationController.text = userLocation;
+                                _category = category;
+                                if (category ==
+                                    RequestCategory.emotionalSupport) {
+                                  _emotionalSupportMode = true;
                                 }
                               });
                             },
-                      title: Text(
-                        'Use my location',
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 18),
+                      TextFormField(
+                        key: _descriptionFieldKey,
+                        controller: _descriptionController,
+                        minLines: 4,
+                        maxLines: 6,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: const InputDecoration(
+                          labelText: 'Details',
+                          hintText:
+                              'What kind of help is needed, what should a helper know, and any timing or safety limits?',
+                          alignLabelWithHint: true,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().length < 20) {
+                            return 'Add a little more detail so helpers understand the request.';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _SectionCard(
+                  title: 'When and where',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'How urgent is it?',
                         style: theme.textTheme.titleSmall,
                       ),
-                      subtitle: Text(
-                        userLocation.isEmpty
-                            ? 'Add your area in your profile to use it here.'
-                            : _useMyLocation
-                            ? 'Using $userLocation'
-                            : 'Enter a different location below.',
-                        style: theme.textTheme.bodySmall,
+                      const SizedBox(height: 10),
+                      Row(
+                        children: UrgencyLevel.values.map((urgency) {
+                          final selected = _urgency == urgency;
+                          final color = ghUrgencyColor(urgency);
+                          return Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                right: urgency == UrgencyLevel.values.last
+                                    ? 0
+                                    : 8,
+                              ),
+                              child: _UrgencyOption(
+                                label: urgency.label,
+                                color: color,
+                                selected: selected,
+                                onTap: () => setState(() => _urgency = urgency),
+                              ),
+                            ),
+                          );
+                        }).toList(),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _locationController,
-                      textCapitalization: TextCapitalization.words,
-                      readOnly: _useMyLocation,
-                      decoration: const InputDecoration(
-                        labelText: 'Location helpers will see',
-                        hintText: 'East Legon',
-                        prefixIcon: Icon(Icons.place_outlined),
+                      const SizedBox(height: 18),
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        value: _useMyLocation,
+                        onChanged: userLocation.isEmpty
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _useMyLocation = value;
+                                  if (value) {
+                                    _locationController.text = userLocation;
+                                  }
+                                });
+                              },
+                        title: Text(
+                          'Use my location',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        subtitle: Text(
+                          userLocation.isEmpty
+                              ? 'Add your area in your profile to use it here.'
+                              : _useMyLocation
+                              ? 'Using $userLocation'
+                              : 'Enter a different location below.',
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Enter the area or neighborhood.';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _preferredTimeController,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        labelText: 'Preferred time',
-                        hintText: 'Tomorrow, 8:00 AM',
-                        prefixIcon: Icon(Icons.schedule_rounded),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _locationController,
+                        textCapitalization: TextCapitalization.words,
+                        readOnly: _useMyLocation,
+                        decoration: const InputDecoration(
+                          labelText: 'Location helpers will see',
+                          hintText: 'East Legon',
+                          prefixIcon: Icon(Icons.place_outlined),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter the area or neighborhood.';
+                          }
+                          return null;
+                        },
                       ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Add a time window.';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _attachmentController,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        labelText: 'Note for a photo or screenshot (optional)',
-                        prefixIcon: Icon(Icons.attach_file_rounded),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _preferredTimeController,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: const InputDecoration(
+                          labelText: 'Preferred time',
+                          hintText: 'Tomorrow, 8:00 AM',
+                          prefixIcon: Icon(Icons.schedule_rounded),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Add a time window.';
+                          }
+                          return null;
+                        },
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _attachmentController,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: const InputDecoration(
+                          labelText:
+                              'Note for a photo or screenshot (optional)',
+                          prefixIcon: Icon(Icons.attach_file_rounded),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              _SectionCard(
-                title: 'Safety options',
-                subtitle:
-                    'These help us route your request to the right people with the right safeguards.',
-                child: Column(
-                  children: [
-                    _SafetyToggle(
-                      icon: Icons.favorite_border_rounded,
-                      title: 'Emotional support',
-                      subtitle: 'Route to listener-friendly helpers.',
-                      value: _emotionalSupportMode,
-                      onChanged: (value) =>
-                          setState(() => _emotionalSupportMode = value),
-                    ),
-                    _SafetyToggle(
-                      icon: Icons.home_outlined,
-                      title: 'Requires a home visit',
-                      subtitle: 'Adds stronger safety review.',
-                      value: _requiresHomeVisit,
-                      onChanged: (value) =>
-                          setState(() => _requiresHomeVisit = value),
-                    ),
-                    _SafetyToggle(
-                      icon: Icons.nightlight_outlined,
-                      title: 'Late-night support',
-                      subtitle: 'Adds safety prompts and check-ins.',
-                      value: _lateNightSupport,
-                      onChanged: (value) =>
-                          setState(() => _lateNightSupport = value),
-                    ),
-                    _SafetyToggle(
-                      icon: Icons.payments_outlined,
-                      title: 'Involves money',
-                      subtitle: 'Adds trust and moderation controls.',
-                      value: _moneyRelated,
-                      onChanged: (value) =>
-                          setState(() => _moneyRelated = value),
-                    ),
-                  ],
-                ),
-              ),
-              if (showsSafetyNotice) ...[
                 const SizedBox(height: 16),
-                const GhInfoBanner(
-                  icon: Icons.health_and_safety_outlined,
-                  foreground: GhColors.amber,
-                  background: GhColors.amberSoft,
-                  message:
-                      'This request gets stronger moderation, safer chat defaults, and check-ins before identities are fully shared.',
+                _SectionCard(
+                  title: 'Safety options',
+                  subtitle:
+                      'These help us route your request to the right people with the right safeguards.',
+                  child: Column(
+                    children: [
+                      _SafetyToggle(
+                        icon: Icons.favorite_border_rounded,
+                        title: 'Emotional support',
+                        subtitle: 'Route to listener-friendly helpers.',
+                        value: _emotionalSupportMode,
+                        onChanged: (value) =>
+                            setState(() => _emotionalSupportMode = value),
+                      ),
+                      _SafetyToggle(
+                        icon: Icons.home_outlined,
+                        title: 'Requires a home visit',
+                        subtitle: 'Adds stronger safety review.',
+                        value: _requiresHomeVisit,
+                        onChanged: (value) =>
+                            setState(() => _requiresHomeVisit = value),
+                      ),
+                      _SafetyToggle(
+                        icon: Icons.nightlight_outlined,
+                        title: 'Late-night support',
+                        subtitle: 'Adds safety prompts and check-ins.',
+                        value: _lateNightSupport,
+                        onChanged: (value) =>
+                            setState(() => _lateNightSupport = value),
+                      ),
+                      _SafetyToggle(
+                        icon: Icons.payments_outlined,
+                        title: 'Involves money',
+                        subtitle: 'Adds trust and moderation controls.',
+                        value: _moneyRelated,
+                        onChanged: (value) =>
+                            setState(() => _moneyRelated = value),
+                      ),
+                    ],
+                  ),
+                ),
+                if (showsSafetyNotice) ...[
+                  const SizedBox(height: 16),
+                  const GhInfoBanner(
+                    icon: Icons.health_and_safety_outlined,
+                    foreground: GhColors.amber,
+                    background: GhColors.amberSoft,
+                    message:
+                        'This request gets stronger moderation, safer chat defaults, and check-ins before identities are fully shared.',
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Text(
+                  'Helpers see the location exactly as you enter it above.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall,
                 ),
               ],
-              const SizedBox(height: 12),
-              Text(
-                'Helpers see the location exactly as you enter it above.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -453,6 +461,25 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
+      if (_descriptionController.text.trim().length < 20) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+
+          final descriptionContext = _descriptionFieldKey.currentContext;
+          if (descriptionContext == null) {
+            return;
+          }
+
+          Scrollable.ensureVisible(
+            descriptionContext,
+            alignment: 0.2,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeInOut,
+          );
+        });
+      }
       return;
     }
 
