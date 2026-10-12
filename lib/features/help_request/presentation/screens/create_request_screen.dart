@@ -25,6 +25,7 @@ class CreateRequestScreen extends StatefulWidget {
 
 class _CreateRequestScreenState extends State<CreateRequestScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _descriptionFieldKey = GlobalKey();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
@@ -218,6 +219,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
+                      key: _descriptionFieldKey,
                       controller: _descriptionController,
                       minLines: 4,
                       maxLines: 6,
@@ -463,7 +465,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                         ),
                         child: const Text(
                           'This request will receive stronger moderation, safer chat defaults, and session check-ins before full identity exposure.',
-                          style: TextStyle(height: 1.4, color: Color(0xFF7C2D12)),
+                          style: TextStyle(
+                            height: 1.4,
+                            color: Color(0xFF7C2D12),
+                          ),
                         ),
                       ),
                   ],
@@ -481,7 +486,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                       : requestLocked
                       ? 'Help someone else or use an exempt request'
                       : 'Submit Request for Matching',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
                 ),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 56),
@@ -514,6 +522,25 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
+      if (_descriptionController.text.trim().length < 20) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+
+          final descriptionContext = _descriptionFieldKey.currentContext;
+          if (descriptionContext == null) {
+            return;
+          }
+
+          Scrollable.ensureVisible(
+            descriptionContext,
+            alignment: 0.2,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeInOut,
+          );
+        });
+      }
       return;
     }
 
@@ -522,7 +549,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (_useMyLocation && userLocation.isEmpty) {
       showGhmeraSnackBar(
         context,
-        message: 'Your profile location is missing. Uncheck "Use my location by default" to enter a location manually.',
+        message:
+            'Your profile location is missing. Uncheck "Use my location by default" to enter a location manually.',
         type: SnackBarType.warning,
       );
       return;
@@ -535,7 +563,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (!isEditing && !appState.canCreateRequest && !_allowsExemption) {
       showGhmeraSnackBar(
         context,
-        message: 'This account is on a reciprocity hold. Use an emergency exception or help someone else first.',
+        message:
+            'This account is on a reciprocity hold. Use an emergency exception or help someone else first.',
         type: SnackBarType.error,
       );
       return;
@@ -581,7 +610,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (savedRequest == null) {
       showGhmeraSnackBar(
         context,
-        message: 'The request could not be saved with the current account state.',
+        message:
+            'The request could not be saved with the current account state.',
         type: SnackBarType.error,
       );
       return;
