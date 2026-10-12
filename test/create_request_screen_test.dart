@@ -20,6 +20,12 @@ class _FakeGhmeraAppState implements GhmeraAppState {
   bool get canCreateRequest => true;
 
   @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -33,7 +39,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(
-      Provider<GhmeraAppState>.value(
+      ChangeNotifierProvider<GhmeraAppState>.value(
         value: _FakeGhmeraAppState(),
         child: const MaterialApp(home: CreateRequestScreen()),
       ),
