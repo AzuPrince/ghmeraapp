@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:ghmera_app/app/models/ghmera_models.dart';
 import 'package:ghmera_app/app/providers/ghmera_app_state.dart';
 import 'package:ghmera_app/app/services/help_credits.dart';
+import 'package:ghmera_app/core/ui/ghmera_theme.dart';
 import 'package:ghmera_app/features/help_request/presentation/screens/create_request_screen.dart';
 
 class _FakeGhmeraAppState extends ChangeNotifier implements GhmeraAppState {
@@ -34,22 +35,26 @@ class _FakeGhmeraAppState extends ChangeNotifier implements GhmeraAppState {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+Future<void> _pumpCreateRequestScreen(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(390, 700);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  await tester.pumpWidget(
+    ChangeNotifierProvider<GhmeraAppState>.value(
+      value: _FakeGhmeraAppState(),
+      child: const MaterialApp(home: CreateRequestScreen()),
+    ),
+  );
+  await tester.pump();
+}
+
 void main() {
   testWidgets('invalid description scrolls back to the detail field', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(390, 700);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.pumpWidget(
-      ChangeNotifierProvider<GhmeraAppState>.value(
-        value: _FakeGhmeraAppState(),
-        child: const MaterialApp(home: CreateRequestScreen()),
-      ),
-    );
-    await tester.pump();
+    await _pumpCreateRequestScreen(tester);
 
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Short title'),
@@ -78,5 +83,29 @@ void main() {
 
     final descriptionField = find.widgetWithText(TextFormField, 'Details');
     expect(tester.getBottomLeft(descriptionField).dy, lessThan(700));
+  });
+
+  testWidgets('detail character requirement changes from red to green', (
+    tester,
+  ) async {
+    await _pumpCreateRequestScreen(tester);
+
+    const indicatorKey = ValueKey<String>('description-character-requirement');
+    final indicatorFinder = find.byKey(indicatorKey);
+    final descriptionField = find.widgetWithText(TextFormField, 'Details');
+
+    await tester.enterText(descriptionField, '1234567890123456789');
+    await tester.pump();
+
+    var indicator = tester.widget<Text>(indicatorFinder);
+    expect(indicator.data, '19/20 characters minimum');
+    expect(indicator.style?.color, GhColors.coral);
+
+    await tester.enterText(descriptionField, '12345678901234567890');
+    await tester.pump();
+
+    indicator = tester.widget<Text>(indicatorFinder);
+    expect(indicator.data, '20/20 characters minimum');
+    expect(indicator.style?.color, GhColors.brand);
   });
 }

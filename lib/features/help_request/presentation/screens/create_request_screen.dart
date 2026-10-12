@@ -28,6 +28,8 @@ class CreateRequestScreen extends StatefulWidget {
 }
 
 class _CreateRequestScreenState extends State<CreateRequestScreen> {
+  static const int _minimumDescriptionLength = 20;
+
   final _formKey = GlobalKey<FormState>();
   final _descriptionFieldKey = GlobalKey();
   final _titleController = TextEditingController();
@@ -99,6 +101,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appState = context.watch<GhmeraAppState>();
+    final descriptionLength = _descriptionController.text.trim().length;
+    final hasEnoughDescription = descriptionLength >= _minimumDescriptionLength;
     final userLocation = _buildUserLocation(appState.currentUser);
     if (_useMyLocation &&
         userLocation.isNotEmpty &&
@@ -230,6 +234,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                         minLines: 4,
                         maxLines: 6,
                         textCapitalization: TextCapitalization.sentences,
+                        onChanged: (_) => setState(() {}),
                         decoration: const InputDecoration(
                           labelText: 'Details',
                           hintText:
@@ -237,11 +242,39 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                           alignLabelWithHint: true,
                         ),
                         validator: (value) {
-                          if (value == null || value.trim().length < 20) {
+                          if (value == null ||
+                              value.trim().length < _minimumDescriptionLength) {
                             return 'Add a little more detail so helpers understand the request.';
                           }
                           return null;
                         },
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            hasEnoughDescription
+                                ? Icons.check_circle_rounded
+                                : Icons.info_rounded,
+                            size: 16,
+                            color: hasEnoughDescription
+                                ? GhColors.brand
+                                : GhColors.coral,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '$descriptionLength/$_minimumDescriptionLength characters minimum',
+                            key: const ValueKey(
+                              'description-character-requirement',
+                            ),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: hasEnoughDescription
+                                  ? GhColors.brand
+                                  : GhColors.coral,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -461,7 +494,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
-      if (_descriptionController.text.trim().length < 20) {
+      if (_descriptionController.text.trim().length <
+          _minimumDescriptionLength) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) {
             return;
