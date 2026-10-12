@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import main
+import workflow_store
 from workflow_backend import WorkflowError
 
 
@@ -72,48 +73,32 @@ class WorkflowAuthenticationTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 403)
 
-    def test_secure_workflow_body_overrides_spoofed_user_id(self):
-        body = {
-            'operation': 'send_message',
-            'currentUserId': 'user_victim',
-            'database': {
-                '_meta': {
-                    'currentUserId': 'user_victim',
-                    'currentUserEmail': 'victim@example.com',
-                },
-                'person@example.com': {
-                    'user': {
-                        'id': 'legacy_person_id',
-                        'email': 'person@example.com',
-                    }
-                },
-                'victim@example.com': {
-                    'user': {
-                        'id': 'user_victim',
-                        'email': 'victim@example.com',
-                    }
-                },
+    def test_caller_profile_ignores_spoofed_user_id(self):
+        database = {
+            '_meta': {
+                'currentUserId': 'user_victim',
+                'currentUserEmail': 'victim@example.com',
             },
-            'payload': {'threadId': 'thread_1', 'content': 'Hello'},
+            'person@example.com': {
+                'user': {'id': 'legacy_person_id', 'email': 'person@example.com'}
+            },
+            'victim@example.com': {
+                'user': {'id': 'user_victim', 'email': 'victim@example.com'}
+            },
         }
 
-        secured = main._secure_workflow_body(
-            body,
-            {'uid': 'firebase-uid', 'email': 'person@example.com'},
+        prepared, caller_id = workflow_store.prepare_caller_database(
+            database,
+            {'currentUserId': 'user_victim', 'database': database},
+            uid='firebase-uid',
+            email='person@example.com',
         )
 
-        self.assertEqual(secured['currentUserId'], 'legacy_person_id')
-        self.assertEqual(
-            secured['database']['_meta']['currentUserId'],
-            'legacy_person_id',
-        )
-        self.assertEqual(
-            secured['database']['_meta']['currentUserEmail'],
-            'person@example.com',
-        )
-        self.assertEqual(body['currentUserId'], 'user_victim')
+        self.assertEqual(caller_id, 'legacy_person_id')
+        self.assertEqual(prepared['_meta']['currentUserId'], 'legacy_person_id')
+        self.assertEqual(prepared['_meta']['currentUserEmail'], 'person@example.com')
 
-    def test_secure_workflow_body_prefers_canonical_uid_profile(self):
+    def test_caller_profile_prefers_canonical_uid_profile(self):
         database = {
             'legacy': {
                 'user': {'id': 'legacy_id', 'email': 'person@example.com'}
@@ -126,30 +111,28 @@ class WorkflowAuthenticationTests(unittest.TestCase):
             },
         }
 
-        secured = main._secure_workflow_body(
-            {'operation': 'create_help_request', 'database': database},
-            {'uid': 'firebase-uid', 'email': 'person@example.com'},
+        caller_id = workflow_store.resolve_caller_user_id(
+            database, uid='firebase-uid', email='person@example.com'
         )
 
-        self.assertEqual(secured['currentUserId'], 'user_firebase-uid')
+        self.assertEqual(caller_id, 'user_firebase-uid')
 
-    def test_secure_workflow_body_rejects_unmatched_account(self):
-        body = {
-            'operation': 'create_help_request',
-            'database': {
-                'someone-else': {
-                    'user': {
-                        'id': 'user_someone_else',
-                        'email': 'someone.else@example.com',
-                    }
+    def test_caller_profile_rejects_unmatched_account(self):
+        database = {
+            'someone-else': {
+                'user': {
+                    'id': 'user_someone_else',
+                    'email': 'someone.else@example.com',
                 }
-            },
+            }
         }
 
         with self.assertRaises(WorkflowError) as raised:
-            main._secure_workflow_body(
-                body,
-                {'uid': 'firebase-uid', 'email': 'person@example.com'},
+            workflow_store.prepare_caller_database(
+                database,
+                {'database': database},
+                uid='firebase-uid',
+                email='person@example.com',
             )
 
         self.assertEqual(raised.exception.status_code, 403)

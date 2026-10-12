@@ -40,6 +40,13 @@ def apply_workflow_operation(
         'submit_participant_safety_report': 'submit_participant_safety_report',
         'report_user_account': 'report_user_account',
         'send_message': 'send_message',
+        'sync_my_profile': 'sync_my_profile',
+        'update_my_notifications': 'update_my_notifications',
+        'record_mood': 'record_mood',
+        'block_user': 'block_user',
+        'unblock_user': 'unblock_user',
+        'set_support_circle_membership': 'set_support_circle_membership',
+        'delete_message': 'delete_message',
     }.get(operation)
 
     if handler_name is None:
@@ -47,4 +54,5 @@ def apply_workflow_operation(
 
     handler = getattr(state, handler_name)
     result = handler(payload)
+    state.sync_derived_user_metrics()
     return state.to_raw_database(), result

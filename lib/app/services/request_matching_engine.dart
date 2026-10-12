@@ -122,12 +122,6 @@ class RequestMatchingEngine {
       return null;
     }
 
-    if (!isAssignedHelper &&
-        request.isHighRisk &&
-        !_isHighRiskQualified(helper)) {
-      return null;
-    }
-
     final directCategoryMatch = helper.helpCategoriesProvided.contains(
       request.category,
     );
@@ -332,10 +326,6 @@ class RequestMatchingEngine {
 
   bool _isActiveHelper(UserEntity helper) {
     return helper.isCurrentlyAvailable;
-  }
-
-  bool _isHighRiskQualified(UserEntity helper) {
-    return helper.idVerified || helper.trustedHelper;
   }
 
   bool _supportsEmotionalSupport(UserEntity helper) {

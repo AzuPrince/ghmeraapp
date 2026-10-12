@@ -46,6 +46,10 @@ class BackendWorkflowApiService {
     defaultValue: 'us-central1',
   );
 
+  /// Tells the server this build sends only the caller's own profile and
+  /// leaves saving the shared app state to the server.
+  static const int clientSchema = 2;
+
   final http.Client _client;
 
   Future<BackendWorkflowApiResult> applyOperation({
@@ -73,6 +77,7 @@ class BackendWorkflowApiService {
           headers: headers,
           body: jsonEncode(<String, dynamic>{
             'operation': operation,
+            'clientSchema': clientSchema,
             'currentUserId': currentUserId,
             'database': database,
             'payload': payload,

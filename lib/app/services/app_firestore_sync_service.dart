@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
-import '../models/ghmera_models.dart';
 
 class AppFirestoreSyncService {
   AppFirestoreSyncService({FirebaseFirestore? firestore, FirebaseAuth? auth})
@@ -17,6 +16,8 @@ class AppFirestoreSyncService {
   static const String _globalAppStateDocId = 'live';
   static const String _usersRequestsCollection = 'Users_requests';
   static const String _sentRequestsDocId = 'sent request';
+  // Shared app state is saved only by the workflow API. This service reads
+  // and watches it; it never writes it.
   static const String _usersSubcollection = 'users';
   static const String _appStateSubcollection = 'app_state';
   static const String _appStateDocId = 'live';
@@ -142,114 +143,6 @@ class AppFirestoreSyncService {
         );
       }
     });
-  }
-
-  Future<bool> syncDatabase({
-    required Map<String, dynamic> database,
-    required List<UserEntity> users,
-    required String currentUserId,
-  }) async {
-    if (users.isEmpty || Firebase.apps.isEmpty) {
-      return false;
-    }
-
-    try {
-      final trackerIdentity = await _resolveTrackerIdentity();
-      if (trackerIdentity == null) {
-        return false;
-      }
-
-      final trackerRef = _trackerRef(trackerIdentity.docId);
-      UserEntity? currentUser;
-      for (final user in users) {
-        if (user.id == currentUserId) {
-          currentUser = user;
-          break;
-        }
-      }
-      if (currentUser == null) {
-        return false;
-      }
-
-      final existingUsersSnapshot = await trackerRef
-          .collection(_usersSubcollection)
-          .get();
-      final batch = _firestore.batch();
-
-      batch.set(trackerRef, <String, dynamic>{
-        'trackerType': trackerIdentity.type,
-        'trackerId': trackerIdentity.id,
-        'authEmail': trackerIdentity.authEmail,
-        'deviceUuid': trackerIdentity.deviceUuid,
-        'currentUserId': currentUserId,
-        'userCount': 1,
-        'lastSyncedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      batch.set(
-        trackerRef.collection(_appStateSubcollection).doc(_appStateDocId),
-        <String, dynamic>{
-          'database': database,
-          'currentUserId': currentUserId,
-          'schemaVersion': 1,
-          'lastSyncedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-
-      batch.set(_globalAppStateRef(), <String, dynamic>{
-        'database': database,
-        'currentUserId': currentUserId,
-        'schemaVersion': 1,
-        'lastSyncedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      final mirroredRequestBuckets = _mirroredRequestBucketsFromDatabase(
-        database,
-      );
-      batch.set(_sentRequestsRef(), <String, dynamic>{
-        'lastSyncedAt': FieldValue.serverTimestamp(),
-        for (final entry in mirroredRequestBuckets.entries)
-          entry.key: <String, dynamic>{
-            'requesterEmail': entry.value.requesterEmail,
-            'requesterId': entry.value.requesterId,
-            'requests': entry.value.requests,
-          },
-      });
-
-      final userBucket = _userBucketFromDatabase(database, currentUser);
-      batch.set(
-        trackerRef.collection(_usersSubcollection).doc(currentUser.id),
-        <String, dynamic>{
-          ..._serializeUser(currentUser),
-          'requests': _serializedList(userBucket['requests']),
-          'notifications': _serializedList(userBucket['notifications']),
-          'moodCheckIns': _serializedList(userBucket['moodCheckIns']),
-          'trackedBy': <String, dynamic>{
-            'type': trackerIdentity.type,
-            'id': trackerIdentity.id,
-          },
-          'lastSyncedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-
-      for (final userDoc in existingUsersSnapshot.docs) {
-        if (userDoc.id == currentUser.id) {
-          continue;
-        }
-        batch.delete(userDoc.reference);
-      }
-
-      await batch.commit();
-      return true;
-    } catch (error, stackTrace) {
-      debugPrint('Firestore app-state sync failed: $error');
-      if (kDebugMode) {
-        debugPrintStack(stackTrace: stackTrace);
-      }
-      return false;
-    }
   }
 
   Future<Map<String, dynamic>?> _loadFallbackDatabase({
@@ -420,133 +313,12 @@ class AppFirestoreSyncService {
     return rawValue.map((key, value) => MapEntry(key.toString(), value));
   }
 
-  Map<String, dynamic> _serializeUser(UserEntity user) {
-    return <String, dynamic>{
-      'id': user.id,
-      'fullName': user.fullName,
-      'email': user.email,
-      'phone': user.phone,
-      'profilePhoto': user.profilePhoto,
-      'shortBio': user.shortBio,
-      'city': user.city,
-      'area': user.area,
-      'exactLatitude': user.exactLatitude,
-      'exactLongitude': user.exactLongitude,
-      'verificationBadges': user.verificationBadges
-          .map((badge) => badge.name)
-          .toList(),
-      'trustScore': user.trustScore,
-      'availability': user.availability,
-      'availabilityStartMinuteOfDay': user.availabilityStartMinuteOfDay,
-      'availabilityEndMinuteOfDay': user.availabilityEndMinuteOfDay,
-      'helpCategoriesProvided': user.helpCategoriesProvided
-          .map((category) => category.name)
-          .toList(),
-      'helpCategoriesRequested': user.helpCategoriesRequested
-          .map((category) => category.name)
-          .toList(),
-      'serviceRadiusKm': user.serviceRadiusKm,
-      'helpGivenCount': user.helpGivenCount,
-      'helpReceivedCount': user.helpReceivedCount,
-      'restrictionStatus': user.restrictionStatus.name,
-      'averageRating': user.averageRating,
-      'completedHelpCount': user.completedHelpCount,
-      'receivedHelpCount': user.receivedHelpCount,
-      'blockedUserIds': List<String>.from(user.blockedUserIds),
-      'mutedUserIds': List<String>.from(user.mutedUserIds),
-      'hiddenRequestIds': List<String>.from(user.hiddenRequestIds),
-      'usesDeviceLocation': user.usesDeviceLocation,
-      'privacySettings': _serializePrivacySettings(user.privacySettings),
-      'twoFactorEnabled': user.twoFactorEnabled,
-      'isAdmin': user.isAdmin,
-      'vulnerableUser': user.vulnerableUser,
-      'hasDisability': user.hasDisability,
-      'adminOverrideReciprocity': user.adminOverrideReciprocity,
-      'sessions': user.sessions.map(_serializeSessionDevice).toList(),
-      'trustFlags': List<String>.from(user.trustFlags),
-    };
-  }
-
-  Map<String, dynamic> _serializePrivacySettings(PrivacySettings settings) {
-    return <String, dynamic>{
-      'showApproximateLocation': settings.showApproximateLocation,
-      'sharePhoneAfterAcceptance': settings.sharePhoneAfterAcceptance,
-      'shareEmailAfterAcceptance': settings.shareEmailAfterAcceptance,
-      'allowSupportCircleInvites': settings.allowSupportCircleInvites,
-      'allowMessageRequests': settings.allowMessageRequests,
-    };
-  }
-
-  Map<String, dynamic> _serializeSessionDevice(SessionDevice session) {
-    return <String, dynamic>{
-      'id': session.id,
-      'label': session.label,
-      'lastActive': session.lastActive.toIso8601String(),
-      'isCurrent': session.isCurrent,
-    };
-  }
-
-  Map<String, dynamic> _userBucketFromDatabase(
-    Map<String, dynamic> database,
-    UserEntity user,
-  ) {
-    final email = user.email.trim().toLowerCase();
-    final bucketKey = email.isNotEmpty ? email : user.id;
-    final rawBucket = database[bucketKey];
-    if (rawBucket is Map) {
-      return _normalizeMap(rawBucket);
-    }
-
-    return const <String, dynamic>{};
-  }
-
   List<Object?> _serializedList(Object? rawValue) {
     if (rawValue is List) {
       return List<Object?>.from(rawValue);
     }
 
     return const <Object?>[];
-  }
-
-  Map<String, _MirroredRequestBucket> _mirroredRequestBucketsFromDatabase(
-    Map<String, dynamic> database,
-  ) {
-    final mirroredRequestBuckets = <String, _MirroredRequestBucket>{};
-
-    for (final entry in database.entries) {
-      if (entry.key.startsWith('_') || entry.value is! Map) {
-        continue;
-      }
-
-      final bucket = _normalizeMap(entry.value as Map<dynamic, dynamic>);
-      final rawUser = bucket['user'];
-      if (rawUser is! Map) {
-        continue;
-      }
-
-      final user = _normalizeMap(rawUser);
-      final requesterEmail = (user['email'] as String?)?.trim().toLowerCase();
-      final requesterId = (user['id'] as String?)?.trim();
-      final requests = _serializedList(bucket['requests']);
-      if (requests.isEmpty) {
-        continue;
-      }
-
-      final docId = (requesterEmail != null && requesterEmail.isNotEmpty)
-          ? requesterEmail
-          : requesterId;
-      if (docId == null || docId.isEmpty) {
-        continue;
-      }
-
-      mirroredRequestBuckets[docId] = _MirroredRequestBucket(
-        requesterEmail: requesterEmail,
-        requesterId: requesterId,
-        requests: requests,
-      );
-    }
-
-    return mirroredRequestBuckets;
   }
 
   Map<String, dynamic> _mergeMirroredRequestsIntoDatabase(

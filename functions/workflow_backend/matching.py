@@ -372,12 +372,6 @@ class WorkflowMatchingMixin:
             return None
         if not is_assigned_helper and not self.is_active_helper(helper):
             return None
-        if (
-            not is_assigned_helper
-            and self.is_high_risk_request(request)
-            and not self.is_high_risk_qualified(helper)
-        ):
-            return None
 
         category = str(request.get('category', '')).strip()
         provided_categories = _copy_string_list(helper.get('helpCategoriesProvided'))
@@ -533,9 +527,6 @@ class WorkflowMatchingMixin:
         if start < end:
             return start <= minute_of_day < end
         return minute_of_day >= start or minute_of_day < end
-
-    def is_high_risk_qualified(self, helper: dict[str, Any]) -> bool:
-        return self.id_verified(helper) or self.trusted_helper(helper)
 
     def supports_emotional_support(self, helper: dict[str, Any]) -> bool:
         provided_categories = _copy_string_list(helper.get('helpCategoriesProvided'))

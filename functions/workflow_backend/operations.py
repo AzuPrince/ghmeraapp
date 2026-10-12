@@ -25,10 +25,6 @@ NOT_ENOUGH_CREDITS_MESSAGE = (
 REQUEST_ALREADY_TAKEN_MESSAGE = 'Someone is already helping with this request.'
 REQUEST_CLOSED_MESSAGE = 'This request is no longer open for help.'
 REQUEST_NOT_AVAILABLE_MESSAGE = 'This request is no longer available.'
-HIGH_RISK_QUALIFICATION_MESSAGE = (
-    'This request needs extra safety checks, so only ID-verified or trusted '
-    'helpers can take it.'
-)
 
 
 class WorkflowOperationsMixin:
@@ -396,13 +392,6 @@ class WorkflowOperationsMixin:
                     'The selected helper is not available for this request right now.',
                     status_code=409,
                 )
-            if self.is_high_risk_request(request) and not self.is_high_risk_qualified(
-                helper
-            ):
-                raise WorkflowError(
-                    'The selected helper does not meet the safety requirements for this request.',
-                    status_code=409,
-                )
 
             direct_request_reasons = ['Requested directly by the requester']
             helper_area = str(helper.get('area', '')).strip()
@@ -463,10 +452,6 @@ class WorkflowOperationsMixin:
                 'You cannot help with this request.',
                 status_code=409,
             )
-        if self.is_high_risk_request(request) and not self.is_high_risk_qualified(
-            helper
-        ):
-            raise WorkflowError(HIGH_RISK_QUALIFICATION_MESSAGE, status_code=409)
 
         match_candidate = self.score_helper(
             request=request,

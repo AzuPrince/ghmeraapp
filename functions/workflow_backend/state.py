@@ -6,10 +6,13 @@ from typing import Any
 from .errors import WorkflowError
 from .matching import WorkflowMatchingMixin
 from .operations import WorkflowOperationsMixin
+from .profile import WorkflowProfileMixin
 from .utils import _as_map, _as_map_list
 
 
-class WorkflowState(WorkflowOperationsMixin, WorkflowMatchingMixin):
+class WorkflowState(
+    WorkflowOperationsMixin, WorkflowProfileMixin, WorkflowMatchingMixin
+):
     def __init__(self, raw_database: dict[str, Any], current_user_id: str):
         self.meta = _as_map(raw_database.get('_meta'))
         self.shared = _as_map(raw_database.get('_shared'))

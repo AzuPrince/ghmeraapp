@@ -2196,12 +2196,10 @@ class _RequestDetailsScreen extends StatelessWidget {
             settledNotice = 'Someone is already helping with this request.';
           } else if (!appState.isRequestOpenForHelp(request)) {
             settledNotice = 'This request is no longer open for help.';
-          } else if (appState.currentUserNeedsVerificationToHelp(request)) {
-            settledNotice =
-                'This request needs extra safety checks, so only ID-verified or trusted helpers can take it.';
           } else {
             settledNotice = null;
           }
+          final showSafetyReminder = canOfferHelp && request.isHighRisk;
 
           return DecoratedBox(
             decoration: const BoxDecoration(
@@ -2224,6 +2222,14 @@ class _RequestDetailsScreen extends StatelessWidget {
                             icon: Icons.volunteer_activism_outlined,
                             message: settledNotice,
                           ),
+                        if (showSafetyReminder) ...[
+                          const GhInfoBanner(
+                            icon: Icons.shield_outlined,
+                            message:
+                                'This request has extra safety checks. Meet in public where possible and keep chats in Ghmera.',
+                          ),
+                          const SizedBox(height: 10),
+                        ],
                         if (canOfferHelp || showChat)
                           Row(
                             children: [

@@ -24,9 +24,8 @@ class _FakeSyncService implements AppFirestoreSyncService {
   final StreamController<_RemoteSnapshot> remote =
       StreamController<_RemoteSnapshot>.broadcast();
 
-  /// When set, the next local writes wait on this until the test completes it.
-  Completer<bool>? pendingWrite;
-  bool writeResult = true;
+  /// Anything other than reading or watching, such as a direct write.
+  final List<Symbol> unexpectedCalls = <Symbol>[];
 
   @override
   Future<Map<String, dynamic>?> loadDatabase() async => savedDatabase;
@@ -34,26 +33,33 @@ class _FakeSyncService implements AppFirestoreSyncService {
   @override
   Stream<_RemoteSnapshot> watchDatabase() => remote.stream;
 
-  @override
-  Future<bool> syncDatabase({
-    required Map<String, dynamic> database,
-    required List<UserEntity> users,
-    required String currentUserId,
-  }) {
-    return pendingWrite?.future ?? Future<bool>.value(writeResult);
-  }
-
   void push(Map<String, dynamic> database) {
     remote.add((database: database, hasPendingWrites: false));
   }
 
   @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) {
+    unexpectedCalls.add(invocation.memberName);
+    return super.noSuchMethod(invocation);
+  }
 }
 
+typedef _ServerCall = ({
+  String operation,
+  Map<String, dynamic> payload,
+  Map<String, dynamic> database,
+});
+
 class _FakeWorkflowApi implements BackendWorkflowApiService {
+  _FakeWorkflowApi([this.server]);
+
+  /// Plays the server: answers with its saved database unless [onApply] says
+  /// otherwise.
+  final _FakeSyncService? server;
   Future<BackendWorkflowApiResult> Function(String operation)? onApply;
-  final List<String> operations = <String>[];
+  final List<_ServerCall> calls = <_ServerCall>[];
+
+  List<String> get operations => calls.map((call) => call.operation).toList();
 
   @override
   Future<BackendWorkflowApiResult> applyOperation({
@@ -62,8 +68,17 @@ class _FakeWorkflowApi implements BackendWorkflowApiService {
     required Map<String, dynamic> database,
     Map<String, dynamic> payload = const <String, dynamic>{},
   }) {
-    operations.add(operation);
-    return onApply!(operation);
+    calls.add((operation: operation, payload: payload, database: database));
+    final handler = onApply;
+    if (handler != null) {
+      return handler(operation);
+    }
+    return Future<BackendWorkflowApiResult>.value(
+      BackendWorkflowApiResult(
+        database: server!.savedDatabase!,
+        result: const <String, dynamic>{},
+      ),
+    );
   }
 
   @override
@@ -147,11 +162,14 @@ Future<GhmeraAppState> _signIn(
   Map<String, dynamic> database, {
   _FakeSyncService? sync,
   _FakeWorkflowApi? api,
+  Duration profileSyncDelay = Duration.zero,
 }) async {
   AppDatabase.instance.hydrateFromMap(database);
+  final syncService = sync ?? _FakeSyncService(database);
   final appState = GhmeraAppState(
-    firestoreSyncService: sync ?? _FakeSyncService(database),
-    workflowApiService: api ?? _FakeWorkflowApi(),
+    firestoreSyncService: syncService,
+    workflowApiService: api ?? _FakeWorkflowApi(syncService),
+    profileSyncDelay: profileSyncDelay,
   );
   await pumpEventQueue();
   return appState;
@@ -201,99 +219,190 @@ void main() {
     viewerB.dispose();
   });
 
-  test('high-risk requests need a verified helper to offer help', () async {
+  test('unverified helpers can offer help on high-risk requests', () async {
     final highRisk = _request('request_risky', category: 'emergencySupport');
 
     final unverified = await _signIn(
       _database(viewerId: 'user_c', requests: [highRisk]),
     );
     expect(_ids(unverified.requestsNeedingMyHelp), ['request_risky']);
-    expect(unverified.canCurrentUserOfferHelp('request_risky'), isFalse);
+    expect(_ids(unverified.highRiskRequests), ['request_risky']);
+    expect(unverified.canCurrentUserOfferHelp('request_risky'), isTrue);
     unverified.dispose();
-
-    final verified = await _signIn(
-      _database(
-        viewerId: 'user_c',
-        requests: [highRisk],
-        viewerBadges: ['idVerified'],
-      ),
-    );
-    expect(verified.canCurrentUserOfferHelp('request_risky'), isTrue);
-    verified.dispose();
   });
 
-  test('a failed local write does not block later remote updates', () async {
+  Map<String, dynamic> takenDatabase() => _database(
+    viewerId: 'user_c',
+    requests: [
+      _request('request_open', status: 'accepted', acceptedHelperId: 'user_b'),
+    ],
+  );
+
+  test('own edits go to the server, never straight to Firestore', () async {
     final sync = _FakeSyncService(
       _database(viewerId: 'user_c', requests: [open]),
-    )..writeResult = false;
-    final appState = await _signIn(sync.savedDatabase!, sync: sync);
+    );
+    final api = _FakeWorkflowApi(sync);
+    final appState = await _signIn(sync.savedDatabase!, sync: sync, api: api);
 
     appState.toggleCurrentUserProvidedCategory(RequestCategory.errands);
     await pumpEventQueue();
-    sync.push(
-      _database(
-        viewerId: 'user_c',
-        requests: [
-          _request(
-            'request_open',
-            status: 'accepted',
-            acceptedHelperId: 'user_b',
-          ),
-        ],
-      ),
+
+    expect(api.operations, ['sync_my_profile']);
+    final call = api.calls.single;
+    final sentUser = call.payload['user'] as Map<String, dynamic>;
+    expect(sentUser['id'], 'user_c');
+    expect(sentUser['helpCategoriesProvided'], contains('errands'));
+    expect(
+      call.database.keys.where((key) => !key.startsWith('_')),
+      ['user_c@example.com'],
     );
+    expect(sync.unexpectedCalls, isEmpty);
+    appState.dispose();
+  });
+
+  test('rapid profile edits are sent as one update', () async {
+    final sync = _FakeSyncService(
+      _database(viewerId: 'user_c', requests: [open]),
+    );
+    final api = _FakeWorkflowApi(sync);
+    final appState = await _signIn(
+      sync.savedDatabase!,
+      sync: sync,
+      api: api,
+      profileSyncDelay: const Duration(milliseconds: 40),
+    );
+
+    appState.toggleCurrentUserProvidedCategory(RequestCategory.errands);
+    appState.toggleCurrentUserRequestedCategory(RequestCategory.childcare);
+    appState.setAvailability(false);
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+
+    expect(api.operations, ['sync_my_profile']);
+    final payload = api.calls.single.payload;
+    final sentUser = payload['user'] as Map<String, dynamic>;
+    expect(sentUser['helpCategoriesProvided'], contains('errands'));
+    expect(sentUser['helpCategoriesRequested'], contains('childcare'));
+    expect(sentUser['availability'], isFalse);
+    expect(
+      (payload['addNotifications'] as List).single['title'],
+      'Availability is off',
+    );
+    appState.dispose();
+  });
+
+  test('notifications, moods and blocks call server operations', () async {
+    final database = _database(viewerId: 'user_c', requests: [open]);
+    (database['user_c@example.com'] as Map<String, dynamic>)['notifications'] =
+        <Object?>[
+          <String, dynamic>{
+            'id': 'notification_1',
+            'userId': 'user_c',
+            'type': 'adminUpdate',
+            'title': 'Hello',
+            'message': 'World',
+            'createdAt': '2026-10-12T10:00:00.000Z',
+            'isRead': false,
+          },
+        ];
+    final sync = _FakeSyncService(database);
+    final api = _FakeWorkflowApi(sync);
+    final appState = await _signIn(database, sync: sync, api: api);
+
+    appState.markNotificationRead('notification_1');
+    appState.recordMood(MoodLevel.good);
+    appState.blockUserAccount('user_b', requestId: 'request_open');
+    await pumpEventQueue();
+
+    expect(api.operations, [
+      'update_my_notifications',
+      'record_mood',
+      'block_user',
+    ]);
+    expect(api.calls[0].payload['readIds'], ['notification_1']);
+    expect(api.calls[2].payload, {'userId': 'user_b', 'requestId': 'request_open'});
+    expect(sync.unexpectedCalls, isEmpty);
+    appState.dispose();
+  });
+
+  test('the live listener applies other members\' changes', () async {
+    final sync = _FakeSyncService(
+      _database(viewerId: 'user_c', requests: [open]),
+    );
+    final appState = await _signIn(sync.savedDatabase!, sync: sync);
+    expect(_ids(appState.requestsNeedingMyHelp), ['request_open']);
+
+    sync.push(takenDatabase());
     await pumpEventQueue();
 
     expect(appState.requestsNeedingMyHelp, isEmpty);
     appState.dispose();
   });
 
-  test('remote updates held back during a write apply once it lands', () async {
+  test('live updates during a server call are fetched once it lands', () async {
     final sync = _FakeSyncService(
       _database(viewerId: 'user_c', requests: [open]),
     );
-    final appState = await _signIn(sync.savedDatabase!, sync: sync);
-    final write = sync.pendingWrite = Completer<bool>();
+    final response = Completer<BackendWorkflowApiResult>();
+    final api = _FakeWorkflowApi(sync)..onApply = (_) => response.future;
+    final appState = await _signIn(sync.savedDatabase!, sync: sync, api: api);
 
     appState.toggleCurrentUserProvidedCategory(RequestCategory.errands);
-    sync.push(
-      _database(
-        viewerId: 'user_c',
-        requests: [
-          _request(
-            'request_open',
-            status: 'accepted',
-            acceptedHelperId: 'user_b',
-          ),
-        ],
-      ),
-    );
+    await pumpEventQueue();
+    expect(api.operations, ['sync_my_profile']);
+
+    sync.push(takenDatabase());
     await pumpEventQueue();
     expect(_ids(appState.requestsNeedingMyHelp), ['request_open']);
 
-    write.complete(true);
+    final staleResponse = _database(viewerId: 'user_c', requests: [open]);
+    sync.savedDatabase = takenDatabase();
+    response.complete(BackendWorkflowApiResult(database: staleResponse));
     await pumpEventQueue();
+
     expect(appState.requestsNeedingMyHelp, isEmpty);
     appState.dispose();
   });
 
-  test('pull to refresh applies saved data even during a write', () async {
+  test('pull to refresh applies saved data even during a server call', () async {
     final sync = _FakeSyncService(
       _database(viewerId: 'user_c', requests: [open]),
     );
-    final appState = await _signIn(sync.savedDatabase!, sync: sync);
-    sync.pendingWrite = Completer<bool>();
+    final api = _FakeWorkflowApi(sync)
+      ..onApply = (_) => Completer<BackendWorkflowApiResult>().future;
+    final appState = await _signIn(sync.savedDatabase!, sync: sync, api: api);
     appState.toggleCurrentUserProvidedCategory(RequestCategory.errands);
+    await pumpEventQueue();
 
-    sync.savedDatabase = _database(
-      viewerId: 'user_c',
-      requests: [
-        _request('request_open', status: 'accepted', acceptedHelperId: 'user_b'),
-      ],
-    );
+    sync.savedDatabase = takenDatabase();
     await appState.refreshHelpRequests();
 
     expect(appState.requestsNeedingMyHelp, isEmpty);
+  });
+
+  test('unsent profile edits survive a live update', () async {
+    final sync = _FakeSyncService(
+      _database(viewerId: 'user_c', requests: [open]),
+    );
+    final api = _FakeWorkflowApi(sync);
+    final appState = await _signIn(
+      sync.savedDatabase!,
+      sync: sync,
+      api: api,
+      profileSyncDelay: const Duration(milliseconds: 40),
+    );
+
+    appState.toggleCurrentUserProvidedCategory(RequestCategory.errands);
+    sync.push(takenDatabase());
+    await pumpEventQueue();
+
+    expect(appState.requestsNeedingMyHelp, isEmpty);
+    expect(
+      appState.currentUser.helpCategoriesProvided,
+      contains(RequestCategory.errands),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(api.operations, ['sync_my_profile']);
     appState.dispose();
   });
 
@@ -307,7 +416,7 @@ void main() {
     final sync = _FakeSyncService(
       _database(viewerId: 'user_c', requests: [open]),
     );
-    final api = _FakeWorkflowApi()
+    final api = _FakeWorkflowApi(sync)
       ..onApply = (_) async => throw BackendWorkflowApiException(
         'Someone is already helping with this request.',
         statusCode: 409,
@@ -342,7 +451,7 @@ void main() {
     final sync = _FakeSyncService(
       _database(viewerId: 'user_c', requests: [open]),
     );
-    final api = _FakeWorkflowApi();
+    final api = _FakeWorkflowApi(sync);
     late GhmeraAppState appState;
     await tester.runAsync(() async {
       appState = await _signIn(sync.savedDatabase!, sync: sync, api: api);
@@ -385,5 +494,54 @@ void main() {
     );
     expect(find.textContaining('Chat'), findsNothing);
     expect(api.operations, isEmpty);
+  });
+
+  testWidgets('high-risk details show a safety reminder beside I can help', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'ghmera_credits_intro_seen_user_c': true,
+    });
+    tester.view.physicalSize = const Size(430, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final sync = _FakeSyncService(
+      _database(
+        viewerId: 'user_c',
+        requests: [
+          _request(
+            'request_risky',
+            title: 'Evening pickup',
+            requiresHomeVisit: true,
+          ),
+        ],
+      ),
+    );
+    late GhmeraAppState appState;
+    await tester.runAsync(() async {
+      appState = await _signIn(sync.savedDatabase!, sync: sync);
+    });
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<GhmeraAppState>.value(
+        value: appState,
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Evening pickup'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('I can help'), findsOneWidget);
+    expect(
+      find.text(
+        'This request has extra safety checks. Meet in public where possible '
+        'and keep chats in Ghmera.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('ID-verified'), findsNothing);
   });
 }

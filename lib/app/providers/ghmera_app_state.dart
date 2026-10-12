@@ -17,10 +17,14 @@ class GhmeraAppState extends ChangeNotifier {
   GhmeraAppState({
     AppFirestoreSyncService? firestoreSyncService,
     BackendWorkflowApiService? workflowApiService,
+    Duration profileSyncDelay = const Duration(milliseconds: 600),
+    Duration locationSyncDelay = const Duration(seconds: 20),
   }) : _appFirestoreSyncService =
            firestoreSyncService ?? AppFirestoreSyncService(),
        _backendWorkflowApiService =
            workflowApiService ?? BackendWorkflowApiService(),
+       _profileSyncDelay = profileSyncDelay,
+       _locationSyncDelay = locationSyncDelay,
        _currentUserId = AppDatabase.instance.currentUserId {
     if (_currentUserId.trim().isEmpty) {
       _currentUserId = _defaultCurrentUserId;
@@ -66,6 +70,8 @@ class GhmeraAppState extends ChangeNotifier {
   final AppDatabase _database = AppDatabase.instance;
   final AppFirestoreSyncService _appFirestoreSyncService;
   final BackendWorkflowApiService _backendWorkflowApiService;
+  final Duration _profileSyncDelay;
+  final Duration _locationSyncDelay;
   final RequestMatchingEngine _requestMatchingEngine =
       const RequestMatchingEngine();
   StreamSubscription<User?>? _authStateSubscription;
@@ -75,8 +81,25 @@ class GhmeraAppState extends ChangeNotifier {
   String _currentUserId;
   bool _isHydratingRemoteState = false;
   bool _accountDeletionInProgress = false;
-  Map<String, dynamic>? _pendingLocalDatabase;
-  Map<String, dynamic>? _deferredRemoteDatabase;
+
+  /// Server operations run one at a time, in the order they were made.
+  Future<void> _serverOperationQueue = Future<void>.value();
+  int _serverOperationsInFlight = 0;
+
+  /// A live update arrived while an operation was in flight. It may predate
+  /// the server's write, so fresh data is fetched once the queue drains.
+  bool _remoteUpdateWhileBusy = false;
+
+  /// Own-profile edits are batched into one `sync_my_profile` call.
+  Timer? _profileSyncTimer;
+  DateTime? _profileSyncDueAt;
+  final List<Map<String, dynamic>> _pendingProfileNotifications =
+      <Map<String, dynamic>>[];
+  Map<String, dynamic>? _lastAuthProfileSync;
+
+  /// Profile syncs wait until the saved state has loaded at least once, so a
+  /// placeholder profile built offline never overwrites the saved one.
+  bool _hasLoadedSharedState = false;
   String? _lastWorkflowError;
 
   /// The server's explanation for the most recent rejected action, if any.
@@ -137,9 +160,7 @@ class GhmeraAppState extends ChangeNotifier {
   /// Whether the current user may still offer help on [requestId], judged
   /// against the latest synced copy rather than a possibly stale one.
   bool canCurrentUserOfferHelp(String requestId) {
-    final request = findRequestById(requestId);
-    return isCommunityRequestStillOpen(requestId) &&
-        !currentUserNeedsVerificationToHelp(request!);
+    return isCommunityRequestStillOpen(requestId);
   }
 
   /// Whether [requestId] is someone else's request that is still waiting for
@@ -151,11 +172,6 @@ class GhmeraAppState extends ChangeNotifier {
         _shouldShowCommunityRequest(request);
   }
 
-  /// High-risk requests can only be taken by ID-verified or trusted helpers.
-  bool currentUserNeedsVerificationToHelp(HelpRequestEntity request) {
-    final user = currentUser;
-    return request.isHighRisk && !user.idVerified && !user.trustedHelper;
-  }
 
   List<HelpRequestEntity> get myRequests {
     final requests =
@@ -708,18 +724,23 @@ class GhmeraAppState extends ChangeNotifier {
 
   void setAvailability(bool value) {
     _replaceUser(currentUser.copyWith(availability: value));
-    _notifications.insert(
-      0,
-      NotificationEntity(
-        id: 'notification_${_notifications.length + 1}',
-        userId: _currentUserId,
-        type: NotificationType.adminUpdate,
-        title: value ? 'Availability is on' : 'Availability is off',
-        message: value
-            ? 'You will now appear in helper matching for your selected categories.'
-            : 'You will not receive new broadcasts until you turn availability back on.',
-        createdAt: DateTime.now(),
-      ),
+    final notification = NotificationEntity(
+      id: 'notification_local_${DateTime.now().microsecondsSinceEpoch}',
+      userId: _currentUserId,
+      type: NotificationType.adminUpdate,
+      title: value ? 'Availability is on' : 'Availability is off',
+      message: value
+          ? 'You will now appear in helper matching for your selected categories.'
+          : 'You will not receive new broadcasts until you turn availability back on.',
+      createdAt: DateTime.now(),
+    );
+    _notifications.insert(0, notification);
+    _scheduleProfileSync(
+      notification: <String, dynamic>{
+        'type': notification.type.name,
+        'title': notification.title,
+        'message': notification.message,
+      },
     );
     notifyListeners();
   }
@@ -795,6 +816,7 @@ class GhmeraAppState extends ChangeNotifier {
         requestPermissionIfNeeded: updatedUser.usesDeviceLocation,
       ),
     );
+    _scheduleProfileSync();
     notifyListeners();
   }
 
@@ -853,7 +875,7 @@ class GhmeraAppState extends ChangeNotifier {
       return;
     }
 
-    _applyRemoteDatabase(rawDatabase, hasPendingWrites: false, force: true);
+    _applyRemoteDatabase(rawDatabase, force: true);
   }
 
   void toggleCurrentUserProvidedCategory(RequestCategory category) {
@@ -867,6 +889,7 @@ class GhmeraAppState extends ChangeNotifier {
     }
 
     _replaceUser(currentUser.copyWith(helpCategoriesProvided: categories));
+    _scheduleProfileSync();
     notifyListeners();
   }
 
@@ -881,6 +904,7 @@ class GhmeraAppState extends ChangeNotifier {
     }
 
     _replaceUser(currentUser.copyWith(helpCategoriesRequested: categories));
+    _scheduleProfileSync();
     notifyListeners();
   }
 
@@ -893,6 +917,7 @@ class GhmeraAppState extends ChangeNotifier {
     final hiddenRequestIds = List<String>.from(currentUser.hiddenRequestIds)
       ..add(requestId);
     _replaceUser(currentUser.copyWith(hiddenRequestIds: hiddenRequestIds));
+    _scheduleProfileSync();
     notifyListeners();
     return true;
   }
@@ -905,6 +930,7 @@ class GhmeraAppState extends ChangeNotifier {
     final hiddenRequestIds = List<String>.from(currentUser.hiddenRequestIds)
       ..remove(requestId);
     _replaceUser(currentUser.copyWith(hiddenRequestIds: hiddenRequestIds));
+    _scheduleProfileSync();
     notifyListeners();
     return true;
   }
@@ -962,7 +988,7 @@ class GhmeraAppState extends ChangeNotifier {
     _notifications.insert(
       0,
       NotificationEntity(
-        id: 'notification_${_notifications.length + 1}',
+        id: 'notification_local_${DateTime.now().microsecondsSinceEpoch}',
         userId: _currentUserId,
         type: NotificationType.safetyAlert,
         title: 'Account blocked',
@@ -972,6 +998,10 @@ class GhmeraAppState extends ChangeNotifier {
       ),
     );
     notifyListeners();
+    _runInBackground('block_user', <String, dynamic>{
+      'userId': userId,
+      if (requestId != null && requestId.isNotEmpty) 'requestId': requestId,
+    });
     return true;
   }
 
@@ -1011,6 +1041,7 @@ class GhmeraAppState extends ChangeNotifier {
     _replaceUser(currentUser.copyWith(blockedUserIds: blockedUserIds));
 
     notifyListeners();
+    _runInBackground('unblock_user', <String, dynamic>{'userId': userId});
     return true;
   }
 
@@ -1030,10 +1061,15 @@ class GhmeraAppState extends ChangeNotifier {
 
     _supportCircles[index] = circle.copyWith(memberIds: memberIds);
     notifyListeners();
+    _runInBackground('set_support_circle_membership', <String, dynamic>{
+      'circleId': circleId,
+      'member': memberIds.contains(_currentUserId),
+    });
   }
 
   void updateCurrentUserPrivacySettings(PrivacySettings settings) {
     _replaceUser(currentUser.copyWith(privacySettings: settings));
+    _scheduleProfileSync();
     notifyListeners();
   }
 
@@ -1055,6 +1091,7 @@ class GhmeraAppState extends ChangeNotifier {
         .toList();
 
     _replaceUser(currentUser.copyWith(sessions: updatedSessions));
+    _scheduleProfileSync();
     notifyListeners();
   }
 
@@ -1092,6 +1129,7 @@ class GhmeraAppState extends ChangeNotifier {
     }
 
     _replaceUser(currentUser.copyWith(sessions: normalizedSessions));
+    _scheduleProfileSync();
     notifyListeners();
   }
 
@@ -1100,7 +1138,7 @@ class GhmeraAppState extends ChangeNotifier {
     _moodCheckIns.insert(
       0,
       MoodCheckInEntity(
-        id: 'mood_${_moodCheckIns.length + 1}',
+        id: 'mood_local_${now.microsecondsSinceEpoch}',
         userId: _currentUserId,
         moodLevel: mood,
         createdAt: now,
@@ -1114,7 +1152,7 @@ class GhmeraAppState extends ChangeNotifier {
       _notifications.insert(
         0,
         NotificationEntity(
-          id: 'notification_${_notifications.length + 1}',
+          id: 'notification_local_${now.microsecondsSinceEpoch}',
           userId: _currentUserId,
           type: NotificationType.emotionalCheckInReminder,
           title: 'Support options are ready',
@@ -1126,6 +1164,7 @@ class GhmeraAppState extends ChangeNotifier {
     }
 
     notifyListeners();
+    _runInBackground('record_mood', <String, dynamic>{'moodLevel': mood.name});
   }
 
   void markNotificationRead(String id) {
@@ -1138,6 +1177,9 @@ class GhmeraAppState extends ChangeNotifier {
 
     _notifications[index] = _notifications[index].copyWith(isRead: true);
     notifyListeners();
+    _runInBackground('update_my_notifications', <String, dynamic>{
+      'readIds': <String>[id],
+    });
   }
 
   void markNotificationUnread(String id) {
@@ -1150,6 +1192,9 @@ class GhmeraAppState extends ChangeNotifier {
 
     _notifications[index] = _notifications[index].copyWith(isRead: false);
     notifyListeners();
+    _runInBackground('update_my_notifications', <String, dynamic>{
+      'unreadIds': <String>[id],
+    });
   }
 
   void markCurrentNotificationsRead() {
@@ -1167,6 +1212,9 @@ class GhmeraAppState extends ChangeNotifier {
 
     if (didChange) {
       notifyListeners();
+      _runInBackground('update_my_notifications', <String, dynamic>{
+        'markAllRead': true,
+      });
     }
   }
 
@@ -1175,6 +1223,9 @@ class GhmeraAppState extends ChangeNotifier {
     _notifications.removeWhere((notification) => notification.id == id);
     if (_notifications.length < initialCount) {
       notifyListeners();
+      _runInBackground('update_my_notifications', <String, dynamic>{
+        'deleteIds': <String>[id],
+      });
     }
   }
 
@@ -1185,6 +1236,9 @@ class GhmeraAppState extends ChangeNotifier {
     );
     if (_notifications.length < initialCount) {
       notifyListeners();
+      _runInBackground('update_my_notifications', <String, dynamic>{
+        'clearAll': true,
+      });
     }
   }
 
@@ -1331,16 +1385,23 @@ class GhmeraAppState extends ChangeNotifier {
     required String threadId,
     required String messageId,
   }) async {
-    final initialCount = _messages.length;
-    _messages.removeWhere(
-      (message) => message.id == messageId && message.threadId == threadId,
-    );
-    final removed = _messages.length < initialCount;
-
-    if (removed) {
-      notifyListeners();
+    final message = _messages
+        .where(
+          (candidate) =>
+              candidate.id == messageId && candidate.threadId == threadId,
+        )
+        .firstOrNull;
+    if (message == null || message.senderId != _currentUserId) {
+      return false;
     }
-    return removed;
+
+    _messages.remove(message);
+    notifyListeners();
+    final response = await _applyBackendWorkflowOperation(
+      operation: 'delete_message',
+      payload: <String, dynamic>{'threadId': threadId, 'messageId': messageId},
+    );
+    return response?.result?['deleted'] == true;
   }
 
   Future<HelpRequestEntity?> createHelpRequest({
@@ -1514,37 +1575,94 @@ class GhmeraAppState extends ChangeNotifier {
     _database.replaceUser(updatedUser);
   }
 
+  /// Runs an operation on the server, which saves the shared app state and
+  /// returns it. Operations run one at a time in the order they were made.
   Future<BackendWorkflowApiResult?> _applyBackendWorkflowOperation({
     required String operation,
     Map<String, dynamic> payload = const <String, dynamic>{},
+  }) {
+    return _enqueueServerOperation(operation: operation, payload: payload);
+  }
+
+  /// Sends a change that is already shown locally.
+  void _runInBackground(String operation, Map<String, dynamic> payload) {
+    if (!_canSaveToServer) {
+      return;
+    }
+    unawaited(
+      _enqueueServerOperation(
+        operation: operation,
+        payload: payload,
+        background: true,
+      ),
+    );
+  }
+
+  bool get _canSaveToServer {
+    if (_accountDeletionInProgress) {
+      return false;
+    }
+    if (Firebase.apps.isEmpty) {
+      return true;
+    }
+    return FirebaseAuth.instance.currentUser != null;
+  }
+
+  Future<BackendWorkflowApiResult?> _enqueueServerOperation({
+    required String operation,
+    required Map<String, dynamic> payload,
+    bool background = false,
+  }) {
+    _serverOperationsInFlight += 1;
+    final completer = Completer<BackendWorkflowApiResult?>();
+    _serverOperationQueue = _serverOperationQueue.then((_) async {
+      try {
+        completer.complete(
+          await _sendServerOperation(
+            operation: operation,
+            payload: payload,
+            background: background,
+          ),
+        );
+      } catch (error, stackTrace) {
+        debugPrint('Workflow API operation "$operation" threw: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        completer.complete(null);
+      } finally {
+        _serverOperationsInFlight -= 1;
+        if (_serverOperationsInFlight == 0) {
+          _onServerOperationsDrained();
+        }
+      }
+    });
+    return completer.future;
+  }
+
+  Future<BackendWorkflowApiResult?> _sendServerOperation({
+    required String operation,
+    required Map<String, dynamic> payload,
+    required bool background,
   }) async {
     if (_isHydratingRemoteState) {
       _lastWorkflowError = 'Ghmera is still syncing. Try again in a moment.';
       return null;
     }
 
-    final localDatabase = _database.toMap(
-      currentUserEmail: _resolvedCurrentUserEmail,
-    );
-
     try {
       final response = await _backendWorkflowApiService.applyOperation(
         operation: operation,
         currentUserId: _currentUserId,
-        database: localDatabase,
+        database: _ownProfileDatabase(),
         payload: payload,
       );
 
-      _isHydratingRemoteState = true;
-      try {
-        _database.hydrateFromMap(response.database);
-        _currentUserId = _database.currentUserId;
-      } finally {
-        _isHydratingRemoteState = false;
+      // A background change with more changes queued behind it would briefly
+      // undo those optimistic changes, so only the last response is shown.
+      if (!background || _serverOperationsInFlight <= 1) {
+        _hydrateFromServer(response.database);
+        super.notifyListeners();
       }
-
       _lastWorkflowError = null;
-      notifyListeners();
       return response;
     } catch (error, stackTrace) {
       _lastWorkflowError = error is BackendWorkflowApiException
@@ -1554,133 +1672,121 @@ class GhmeraAppState extends ChangeNotifier {
       debugPrintStack(stackTrace: stackTrace);
       if (error is BackendWorkflowApiException && error.database != null) {
         _showServerStateAfterConflict(error.database!);
+      } else if (background) {
+        _remoteUpdateWhileBusy = true;
       }
       return null;
     }
   }
 
-  /// The server rejected an action because this copy was out of date. Show
-  /// the server's view of the request without saving it, then reload.
-  void _showServerStateAfterConflict(Map<String, dynamic> serverDatabase) {
-    _isHydratingRemoteState = true;
-    try {
-      _database.hydrateFromMap(serverDatabase);
-      _currentUserId = _database.currentUserId;
-      _syncDerivedUserMetrics();
-    } catch (error, stackTrace) {
-      debugPrint('Failed to apply server state after a conflict: $error');
-      debugPrintStack(stackTrace: stackTrace);
-    } finally {
-      _isHydratingRemoteState = false;
+  void _onServerOperationsDrained() {
+    if (!_remoteUpdateWhileBusy) {
+      return;
     }
-    super.notifyListeners();
+    _remoteUpdateWhileBusy = false;
     unawaited(refreshHelpRequests());
   }
 
-  void _persistAppState() {
-    if (_isHydratingRemoteState) {
-      return;
-    }
-
-    final localDatabase = _database.toMap(
-      currentUserEmail: _resolvedCurrentUserEmail,
-    );
-    _pendingLocalDatabase = localDatabase;
-
-    unawaited(_syncLocalDatabase(localDatabase));
+  /// The caller's own profile, which is all the server takes from this phone.
+  /// It lets the server create the profile of a member who isn't saved yet.
+  Map<String, dynamic> _ownProfileDatabase() {
+    final user = _findUserById(_currentUserId);
+    final email = _resolvedCurrentUserEmail;
+    return <String, dynamic>{
+      '_meta': <String, dynamic>{
+        'currentUserId': _currentUserId,
+        'currentUserEmail': ?email,
+      },
+      if (user != null)
+        (user.email.trim().isNotEmpty
+            ? user.email.trim().toLowerCase()
+            : user.id): <String, dynamic>{
+          'user': _database.userToMap(user),
+        },
+    };
   }
 
-  Future<void> _syncLocalDatabase(Map<String, dynamic> localDatabase) async {
-    try {
-      await _appFirestoreSyncService.syncDatabase(
-        database: localDatabase,
-        users: _users,
-        currentUserId: _currentUserId,
-      );
-    } catch (error, stackTrace) {
-      debugPrint('Firestore app-state sync threw: $error');
-      debugPrintStack(stackTrace: stackTrace);
-    }
+  bool get _hasPendingProfileEdits => _profileSyncTimer?.isActive ?? false;
 
-    // Remote snapshots are held back only while this write is in flight. A
-    // failed write or an echo that never matches exactly must not leave the
-    // app ignoring everyone else's changes.
-    if (!identical(_pendingLocalDatabase, localDatabase)) {
-      return;
-    }
-    _pendingLocalDatabase = null;
-    final deferredRemoteDatabase = _deferredRemoteDatabase;
-    _deferredRemoteDatabase = null;
-    if (deferredRemoteDatabase != null) {
-      _applyRemoteDatabase(deferredRemoteDatabase, hasPendingWrites: false);
-    }
-  }
-
-  void _startFirestoreLiveSync() {
-    unawaited(_remoteDatabaseSubscription?.cancel());
-    _remoteDatabaseSubscription = _appFirestoreSyncService
-        .watchDatabase()
-        .listen(
-          (remoteDatabase) {
-            final rawDatabase = remoteDatabase.database;
-            if (rawDatabase == null) {
-              return;
-            }
-
-            _applyRemoteDatabase(
-              rawDatabase,
-              hasPendingWrites: remoteDatabase.hasPendingWrites,
-            );
-          },
-          onError: (Object error, StackTrace stackTrace) {
-            debugPrint('Failed to watch Firestore app state: $error');
-            debugPrintStack(stackTrace: stackTrace);
-          },
-        );
-  }
-
-  /// Applies a remote copy of the database. While a local write is in flight
-  /// the newest remote copy is held back and applied once that write settles.
-  /// [force] applies the remote copy regardless, for explicit refreshes.
-  void _applyRemoteDatabase(
-    Map<String, dynamic> rawDatabase, {
-    required bool hasPendingWrites,
-    bool force = false,
+  /// Batches own-profile edits into one `sync_my_profile` call. Frequent
+  /// updates such as location pass a longer [delay]; an earlier deadline
+  /// already scheduled is kept so other edits are never held back by them.
+  void _scheduleProfileSync({
+    Duration? delay,
+    Map<String, dynamic>? notification,
   }) {
-    _deferredRemoteDatabase = null;
-    if (force) {
-      _pendingLocalDatabase = null;
+    if (notification != null) {
+      _pendingProfileNotifications.add(notification);
+    }
+    final wait = delay ?? _profileSyncDelay;
+    final dueAt = DateTime.now().add(wait);
+    final currentDueAt = _profileSyncDueAt;
+    if (_hasPendingProfileEdits &&
+        currentDueAt != null &&
+        !currentDueAt.isAfter(dueAt)) {
+      return;
+    }
+    _profileSyncTimer?.cancel();
+    _profileSyncDueAt = dueAt;
+    _profileSyncTimer = Timer(wait, _flushProfileSync);
+  }
+
+  void _flushProfileSync() {
+    _profileSyncTimer?.cancel();
+    _profileSyncTimer = null;
+    _profileSyncDueAt = null;
+    if (!_hasLoadedSharedState || _isHydratingRemoteState) {
+      _scheduleProfileSync(delay: const Duration(seconds: 5));
+      return;
+    }
+    final user = _findUserById(_currentUserId);
+    if (user == null || !_canSaveToServer) {
+      _pendingProfileNotifications.clear();
+      return;
     }
 
-    final localDatabase = _database.toMap(
-      currentUserEmail: _resolvedCurrentUserEmail,
+    final notifications = List<Map<String, dynamic>>.from(
+      _pendingProfileNotifications,
     );
-    if (_deepEquals(localDatabase, rawDatabase)) {
-      if (_pendingLocalDatabase != null &&
-          _deepEquals(_pendingLocalDatabase, rawDatabase) &&
-          !hasPendingWrites) {
-        _pendingLocalDatabase = null;
-      }
-      return;
-    }
+    _pendingProfileNotifications.clear();
+    _runInBackground('sync_my_profile', <String, dynamic>{
+      'user': _database.userToMap(user),
+      if (notifications.isNotEmpty) 'addNotifications': notifications,
+    });
+  }
 
-    if (_pendingLocalDatabase != null) {
-      if (!_deepEquals(_pendingLocalDatabase, rawDatabase)) {
-        _deferredRemoteDatabase = rawDatabase;
-      } else if (!hasPendingWrites) {
-        _pendingLocalDatabase = null;
-      }
-      return;
+  /// Signing in fills the profile from the account (name, email, photo). Save
+  /// that once if it changed what the server has.
+  UserEntity _upsertCurrentUserFromAuthAndSync(User authUser) {
+    final previousUsers = List<UserEntity>.from(_users);
+    final syncedUser = _upsertCurrentUserFromAuth(authUser);
+    final before = previousUsers
+        .where((user) => user.id == syncedUser.id)
+        .firstOrNull;
+    final afterMap = _database.userToMap(syncedUser);
+    if (before != null && _deepEquals(_database.userToMap(before), afterMap)) {
+      return syncedUser;
     }
-
-    if (hasPendingWrites && !force) {
-      return;
+    if (_lastAuthProfileSync != null &&
+        _deepEquals(_lastAuthProfileSync, afterMap)) {
+      return syncedUser;
     }
+    _lastAuthProfileSync = afterMap;
+    _scheduleProfileSync();
+    return syncedUser;
+  }
 
+  /// Replaces local state with [rawDatabase] from the server. Own-profile
+  /// edits that haven't been sent yet are kept.
+  void _hydrateFromServer(Map<String, dynamic> rawDatabase) {
+    final unsentProfile = _hasPendingProfileEdits
+        ? _findUserById(_currentUserId)
+        : null;
     _isHydratingRemoteState = true;
     try {
       _database.hydrateFromMap(rawDatabase);
       _currentUserId = _database.currentUserId;
+      _hasLoadedSharedState = true;
 
       final authUser = Firebase.apps.isNotEmpty
           ? FirebaseAuth.instance.currentUser
@@ -1694,14 +1800,82 @@ class GhmeraAppState extends ChangeNotifier {
         _ensureCurrentUserContext();
       }
 
+      if (unsentProfile != null && unsentProfile.id == _currentUserId) {
+        if (_findUserById(unsentProfile.id) == null) {
+          _users.insert(0, unsentProfile);
+        } else {
+          _replaceUser(unsentProfile);
+        }
+      }
       _syncDerivedUserMetrics();
+    } finally {
+      _isHydratingRemoteState = false;
+    }
+  }
+
+  /// The server rejected an action because this copy was out of date. Show
+  /// the server's view, then reload.
+  void _showServerStateAfterConflict(Map<String, dynamic> serverDatabase) {
+    try {
+      _hydrateFromServer(serverDatabase);
+    } catch (error, stackTrace) {
+      debugPrint('Failed to apply server state after a conflict: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+    super.notifyListeners();
+    unawaited(refreshHelpRequests());
+  }
+
+  void _startFirestoreLiveSync() {
+    unawaited(_remoteDatabaseSubscription?.cancel());
+    _remoteDatabaseSubscription = _appFirestoreSyncService
+        .watchDatabase()
+        .listen(
+          (remoteDatabase) {
+            final rawDatabase = remoteDatabase.database;
+            if (rawDatabase == null) {
+              return;
+            }
+
+            _applyRemoteDatabase(rawDatabase);
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            debugPrint('Failed to watch Firestore app state: $error');
+            debugPrintStack(stackTrace: stackTrace);
+          },
+        );
+  }
+
+  /// Applies a copy of the shared state read from Firestore. While a server
+  /// operation is in flight the copy may predate it, so fresh data is fetched
+  /// once the queue drains instead. [force] applies it regardless, for
+  /// explicit refreshes.
+  void _applyRemoteDatabase(
+    Map<String, dynamic> rawDatabase, {
+    bool force = false,
+  }) {
+    if (_accountDeletionInProgress) {
+      return;
+    }
+    if (_serverOperationsInFlight > 0 && !force) {
+      _remoteUpdateWhileBusy = true;
+      return;
+    }
+
+    final localDatabase = _database.toMap(
+      currentUserEmail: _resolvedCurrentUserEmail,
+    );
+    if (_deepEquals(localDatabase, rawDatabase)) {
+      return;
+    }
+
+    try {
+      _hydrateFromServer(rawDatabase);
       super.notifyListeners();
       unawaited(_syncLocationTrackingState(requestPermissionIfNeeded: false));
     } catch (error, stackTrace) {
       debugPrint('Failed to apply remote Firestore app state: $error');
       debugPrintStack(stackTrace: stackTrace);
-    } finally {
-      _isHydratingRemoteState = false;
     }
   }
 
@@ -1711,14 +1885,14 @@ class GhmeraAppState extends ChangeNotifier {
       if (rawDatabase != null) {
         _database.hydrateFromMap(rawDatabase);
         _currentUserId = _database.currentUserId;
+        _hasLoadedSharedState = true;
       }
 
       final authUser = Firebase.apps.isNotEmpty
           ? FirebaseAuth.instance.currentUser
           : null;
       if (authUser != null) {
-        final syncedUser = _upsertCurrentUserFromAuth(authUser);
-        _currentUserId = syncedUser.id;
+        _currentUserId = _upsertCurrentUserFromAuthAndSync(authUser).id;
         _removeLegacyDemoData();
         _database.currentUserId = _currentUserId;
       } else {
@@ -1756,7 +1930,7 @@ class GhmeraAppState extends ChangeNotifier {
     var didChange = false;
 
     if (authUser != null) {
-      final syncedUser = _upsertCurrentUserFromAuth(authUser);
+      final syncedUser = _upsertCurrentUserFromAuthAndSync(authUser);
       didChange = true;
       if (_currentUserId != syncedUser.id) {
         _currentUserId = syncedUser.id;
@@ -1780,8 +1954,6 @@ class GhmeraAppState extends ChangeNotifier {
 
     if (notifyListenersAfter) {
       notifyListeners();
-    } else {
-      _persistAppState();
     }
   }
 
@@ -1813,16 +1985,12 @@ class GhmeraAppState extends ChangeNotifier {
   @override
   void notifyListeners() {
     _syncDerivedUserMetrics();
-    if (!_accountDeletionInProgress) {
-      _persistAppState();
-    }
     super.notifyListeners();
   }
 
   Future<void> prepareForAccountDeletion() async {
     _accountDeletionInProgress = true;
-    _pendingLocalDatabase = null;
-    _deferredRemoteDatabase = null;
+    _cancelPendingProfileSync();
     await _remoteDatabaseSubscription?.cancel();
     _remoteDatabaseSubscription = null;
   }
@@ -1836,10 +2004,18 @@ class GhmeraAppState extends ChangeNotifier {
   }
 
   void completeAccountDeletion() {
-    _pendingLocalDatabase = null;
-    _deferredRemoteDatabase = null;
+    _cancelPendingProfileSync();
+    _hasLoadedSharedState = false;
+    _remoteUpdateWhileBusy = false;
     _database.clear();
     _currentUserId = _defaultCurrentUserId;
+  }
+
+  void _cancelPendingProfileSync() {
+    _profileSyncTimer?.cancel();
+    _profileSyncTimer = null;
+    _profileSyncDueAt = null;
+    _pendingProfileNotifications.clear();
   }
 
   void _syncDerivedUserMetrics() {
@@ -2425,6 +2601,7 @@ class GhmeraAppState extends ChangeNotifier {
         usesDeviceLocation: enableAutoUpdate,
       ),
     );
+    _scheduleProfileSync(delay: _locationSyncDelay);
     notifyListeners();
   }
 
@@ -2559,6 +2736,7 @@ class GhmeraAppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _profileSyncTimer?.cancel();
     _authStateSubscription?.cancel();
     _remoteDatabaseSubscription?.cancel();
     unawaited(_stopLocationTracking());

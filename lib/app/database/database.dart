@@ -80,6 +80,8 @@ class AppDatabase {
     return rawDatabase;
   }
 
+  Map<String, dynamic> userToMap(UserEntity user) => _serializeUser(user);
+
   void clear() {
     currentUserId = 'user_current';
     users.clear();
