@@ -679,6 +679,11 @@ class HelpRequestEntity {
   final List<String> suggestedHelperIds;
   final List<HelpActionLogEntry> actionLog;
 
+  String get displayTitle {
+    final trimmed = title.trim();
+    return trimmed.isEmpty ? '${category.label} request' : trimmed;
+  }
+
   bool get isHighRisk {
     return category.isHighRisk ||
         requiresHomeVisit ||

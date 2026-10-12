@@ -1,11 +1,15 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
+import '../../../../app/services/help_credits.dart';
+import '../../../../core/ui/ghmera_components.dart';
 import '../../../../core/ui/uniform_app_bar.dart';
 import '../../../../core/ui/app_snack_bar.dart';
-import '../../../profile/presentation/widgets/privacy_session_controls_card.dart';
+import '../../../../core/ui/ghmera_theme.dart';
 
 class CreateRequestScreen extends StatefulWidget {
   const CreateRequestScreen({
@@ -41,6 +45,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   bool _moneyRelated = false;
   bool _emergencyOverride = false;
   bool _useMyLocation = true;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -92,7 +97,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final appState = context.watch<GhmeraAppState>();
     final userLocation = _buildUserLocation(appState.currentUser);
     if (_useMyLocation &&
@@ -101,88 +105,72 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       _locationController.text = userLocation;
     }
     final isEditing = widget.initialRequest != null;
-    final requestLocked =
-        !isEditing && !appState.canCreateRequest && !_allowsExemption;
+    final credits = appState.currentUserCredits;
+    final isFree = creditFreeCategories.contains(_category);
+    final requestLocked = !isEditing && !appState.canCreateRequest && !isFree;
+    final horizontalPadding = math.max(
+      16.0,
+      (MediaQuery.sizeOf(context).width - 760) / 2,
+    );
+    final showsSafetyNotice =
+        _category.isHighRisk ||
+        _requiresHomeVisit ||
+        _lateNightSupport ||
+        _moneyRelated;
 
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
         centerTitle: false,
+        titleSpacing: Navigator.of(context).canPop() ? 0 : 16,
         leading: Navigator.of(context).canPop()
             ? uniformBackButton(context)
             : null,
         title: uniformAppBarTitle(
           context,
-          title: isEditing ? 'Edit Help Request' : 'Create Help Request',
+          title: isEditing ? 'Edit request' : 'Ask for help',
           subtitle: isEditing
-              ? 'Update the request details shown to helpers.'
-              : 'Share details so the right helper can respond.',
+              ? 'Update what helpers will see.'
+              : 'Tell nearby helpers what you need.',
         ),
       ),
       body: SafeArea(
+        top: false,
+        bottom: false,
         child: Form(
           key: _formKey,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              4,
+              horizontalPadding,
+              24,
+            ),
             children: [
-              if (!isEditing && !appState.canCreateRequest)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 18),
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7ED),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFFDBA74)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.balance_rounded,
-                            color: colorScheme.secondary,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Reciprocity hold active',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        appState.reciprocityMessage,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          height: 1.45,
-                          color: const Color(0xFF5A4B35),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Emergency requests and approved exception cases can still be submitted below.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF7A6851),
-                        ),
-                      ),
-                    ],
-                  ),
+              if (!isEditing) ...[
+                _CreditStatusBanner(
+                  available: credits.available,
+                  isFree: isFree,
+                  locked: requestLocked,
+                  bypass: appState.currentUser.canBypassReciprocity,
+                  onChooseEmergency: () {
+                    setState(() {
+                      _category = RequestCategory.emergencySupport;
+                    });
+                  },
                 ),
+                const SizedBox(height: 16),
+              ],
               _SectionCard(
-                title: 'Request details',
-                subtitle:
-                    'The platform needs a clear title, category, and context so matching stays useful rather than noisy.',
+                title: 'What do you need?',
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TextFormField(
                       controller: _titleController,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: const InputDecoration(
-                        labelText: 'Request title',
+                        labelText: 'Short title',
                         hintText: 'Need help setting up my router tonight',
                       ),
                       validator: (value) {
@@ -192,45 +180,59 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<RequestCategory>(
-                      initialValue: _category,
-                      decoration: const InputDecoration(labelText: 'Category'),
-                      items: RequestCategory.values
-                          .map(
-                            (category) => DropdownMenuItem<RequestCategory>(
-                              value: category,
-                              child: Text(category.label),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value == null) {
-                          return;
-                        }
-                        setState(() {
-                          _category = value;
-                          if (value == RequestCategory.emotionalSupport) {
-                            _emotionalSupportMode = true;
-                          }
-                        });
-                      },
+                    const SizedBox(height: 18),
+                    Text('Category', style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: RequestCategory.values.map((category) {
+                        final style = GhCategoryStyle.of(category);
+                        final selected = _category == category;
+                        return ChoiceChip(
+                          showCheckmark: false,
+                          selected: selected,
+                          avatar: Icon(
+                            style.icon,
+                            size: 18,
+                            color: selected ? Colors.white : style.color,
+                          ),
+                          label: Text(category.label),
+                          labelStyle: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: selected ? Colors.white : GhColors.ink,
+                          ),
+                          selectedColor: style.color,
+                          side: BorderSide(
+                            color: selected ? style.color : GhColors.line,
+                          ),
+                          onSelected: (_) {
+                            setState(() {
+                              _category = category;
+                              if (category ==
+                                  RequestCategory.emotionalSupport) {
+                                _emotionalSupportMode = true;
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
                     TextFormField(
                       controller: _descriptionController,
                       minLines: 4,
                       maxLines: 6,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: const InputDecoration(
-                        labelText: 'Detailed description',
+                        labelText: 'Details',
                         hintText:
-                            'Describe what kind of help is needed, what a helper should know, and any safety or timing limits.',
+                            'What kind of help is needed, what should a helper know, and any timing or safety limits?',
                         alignLabelWithHint: true,
                       ),
                       validator: (value) {
                         if (value == null || value.trim().length < 20) {
-                          return 'Add enough detail for a trusted helper to understand the request.';
+                          return 'Add a little more detail so helpers understand the request.';
                         }
                         return null;
                       },
@@ -240,276 +242,213 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               ),
               const SizedBox(height: 16),
               _SectionCard(
-                title: 'Urgency and location',
-                subtitle:
-                    'Urgency affects ranking. The location you set here is the exact location help givers will see for this request.',
+                title: 'When and where',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Urgency',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      'How urgent is it?',
+                      style: theme.textTheme.titleSmall,
                     ),
                     const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: UrgencyLevel.values
-                          .map(
-                            (urgency) => ChoiceChip(
-                              label: Text(urgency.label),
-                              selected: _urgency == urgency,
-                              onSelected: (_) {
-                                setState(() {
-                                  _urgency = urgency;
-                                });
-                              },
+                    Row(
+                      children: UrgencyLevel.values.map((urgency) {
+                        final selected = _urgency == urgency;
+                        final color = ghUrgencyColor(urgency);
+                        return Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              right: urgency == UrgencyLevel.values.last
+                                  ? 0
+                                  : 8,
                             ),
-                          )
-                          .toList(),
+                            child: _UrgencyOption(
+                              label: urgency.label,
+                              color: color,
+                              selected: selected,
+                              onTap: () => setState(() => _urgency = urgency),
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     ),
                     const SizedBox(height: 18),
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final stacked = constraints.maxWidth < 640;
-                        final useLocationToggle = SwitchListTile.adaptive(
-                          contentPadding: EdgeInsets.zero,
-                          value: _useMyLocation,
-                          onChanged: userLocation.isEmpty
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    _useMyLocation = value;
-                                    if (value) {
-                                      _locationController.text = userLocation;
-                                    }
-                                  });
-                                },
-                          title: const Text('Use my location by default'),
-                          subtitle: Text(
-                            userLocation.isEmpty
-                                ? 'Add your area or city in your profile to enable this default.'
-                                : _useMyLocation
-                                ? 'Using $userLocation for this request location.'
-                                : 'Location is unlocked. You can edit it manually.',
-                          ),
-                        );
-
-                        final locationField = TextFormField(
-                          controller: _locationController,
-                          textCapitalization: TextCapitalization.words,
-                          readOnly: _useMyLocation,
-                          decoration: const InputDecoration(
-                            labelText: 'Location help givers will see',
-                            hintText: 'East Legon',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Enter the area or neighborhood.';
-                            }
-                            return null;
-                          },
-                        );
-
-                        final preferredTimeField = TextFormField(
-                          controller: _preferredTimeController,
-                          textCapitalization: TextCapitalization.sentences,
-                          decoration: const InputDecoration(
-                            labelText: 'Preferred time',
-                            hintText: 'Tomorrow, 8:00 AM',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Add a time window.';
-                            }
-                            return null;
-                          },
-                        );
-
-                        if (stacked) {
-                          return Column(
-                            children: [
-                              useLocationToggle,
-                              const SizedBox(height: 8),
-                              locationField,
-                              const SizedBox(height: 12),
-                              preferredTimeField,
-                            ],
-                          );
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      value: _useMyLocation,
+                      onChanged: userLocation.isEmpty
+                          ? null
+                          : (value) {
+                              setState(() {
+                                _useMyLocation = value;
+                                if (value) {
+                                  _locationController.text = userLocation;
+                                }
+                              });
+                            },
+                      title: Text(
+                        'Use my location',
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      subtitle: Text(
+                        userLocation.isEmpty
+                            ? 'Add your area in your profile to use it here.'
+                            : _useMyLocation
+                            ? 'Using $userLocation'
+                            : 'Enter a different location below.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _locationController,
+                      textCapitalization: TextCapitalization.words,
+                      readOnly: _useMyLocation,
+                      decoration: const InputDecoration(
+                        labelText: 'Location helpers will see',
+                        hintText: 'East Legon',
+                        prefixIcon: Icon(Icons.place_outlined),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Enter the area or neighborhood.';
                         }
-
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                children: [
-                                  useLocationToggle,
-                                  const SizedBox(height: 8),
-                                  locationField,
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(child: preferredTimeField),
-                          ],
-                        );
+                        return null;
                       },
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _preferredTimeController,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        labelText: 'Preferred time',
+                        hintText: 'Tomorrow, 8:00 AM',
+                        prefixIcon: Icon(Icons.schedule_rounded),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Add a time window.';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: _attachmentController,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: const InputDecoration(
-                        labelText: 'Attachment label',
-                        hintText: 'Optional note for a screenshot or photo',
+                        labelText: 'Note for a photo or screenshot (optional)',
+                        prefixIcon: Icon(Icons.attach_file_rounded),
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'Request routing flags',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'These request-specific flags affect moderation, eligibility checks, and safety workflows.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF61726F),
-                        height: 1.45,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      value: _emotionalSupportMode,
-                      onChanged: (value) {
-                        setState(() {
-                          _emotionalSupportMode = value;
-                        });
-                      },
-                      title: const Text('Emotional support mode'),
-                      subtitle: const Text(
-                        'Use structured prompts and listener-friendly routing for emotional or wellbeing support.',
-                      ),
-                    ),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      value: _requiresHomeVisit,
-                      onChanged: (value) {
-                        setState(() {
-                          _requiresHomeVisit = value;
-                        });
-                      },
-                      title: const Text('Requires home visit'),
-                      subtitle: const Text(
-                        'Triggers stronger safety review and more limited identity exposure.',
-                      ),
-                    ),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      value: _lateNightSupport,
-                      onChanged: (value) {
-                        setState(() {
-                          _lateNightSupport = value;
-                        });
-                      },
-                      title: const Text('Late-night support'),
-                      subtitle: const Text(
-                        'Marks the request for additional safety prompts and check-ins.',
-                      ),
-                    ),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      value: _moneyRelated,
-                      onChanged: (value) {
-                        setState(() {
-                          _moneyRelated = value;
-                        });
-                      },
-                      title: const Text('Money-related request'),
-                      subtitle: const Text(
-                        'Used for higher-risk moderation and trust controls.',
-                      ),
-                    ),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      value: _emergencyOverride,
-                      onChanged: (value) {
-                        setState(() {
-                          _emergencyOverride = value;
-                        });
-                      },
-                      title: const Text('Emergency or admin exception'),
-                      subtitle: const Text(
-                        'Allows submission even during a reciprocity hold for approved edge cases.',
-                      ),
-                    ),
-                    if (_category.isHighRisk ||
-                        _requiresHomeVisit ||
-                        _lateNightSupport ||
-                        _moneyRelated)
-                      Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.only(top: 10),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF7ED),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFFED7AA)),
-                        ),
-                        child: const Text(
-                          'This request will receive stronger moderation, safer chat defaults, and session check-ins before full identity exposure.',
-                          style: TextStyle(height: 1.4, color: Color(0xFF7C2D12)),
-                        ),
-                      ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              const PrivacySessionControlsCard(),
-              const SizedBox(height: 22),
-              FilledButton.icon(
-                onPressed: requestLocked ? null : _submit,
-                icon: const Icon(Icons.volunteer_activism_rounded),
-                label: Text(
-                  isEditing
-                      ? 'Save Request Changes'
-                      : requestLocked
-                      ? 'Help someone else or use an exempt request'
-                      : 'Submit Request for Matching',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                ),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 56),
-                  backgroundColor: const Color(0xFF103B36),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+              _SectionCard(
+                title: 'Safety options',
+                subtitle:
+                    'These help us route your request to the right people with the right safeguards.',
+                child: Column(
+                  children: [
+                    _SafetyToggle(
+                      icon: Icons.favorite_border_rounded,
+                      title: 'Emotional support',
+                      subtitle: 'Route to listener-friendly helpers.',
+                      value: _emotionalSupportMode,
+                      onChanged: (value) =>
+                          setState(() => _emotionalSupportMode = value),
+                    ),
+                    _SafetyToggle(
+                      icon: Icons.home_outlined,
+                      title: 'Requires a home visit',
+                      subtitle: 'Adds stronger safety review.',
+                      value: _requiresHomeVisit,
+                      onChanged: (value) =>
+                          setState(() => _requiresHomeVisit = value),
+                    ),
+                    _SafetyToggle(
+                      icon: Icons.nightlight_outlined,
+                      title: 'Late-night support',
+                      subtitle: 'Adds safety prompts and check-ins.',
+                      value: _lateNightSupport,
+                      onChanged: (value) =>
+                          setState(() => _lateNightSupport = value),
+                    ),
+                    _SafetyToggle(
+                      icon: Icons.payments_outlined,
+                      title: 'Involves money',
+                      subtitle: 'Adds trust and moderation controls.',
+                      value: _moneyRelated,
+                      onChanged: (value) =>
+                          setState(() => _moneyRelated = value),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
-              Text(
-                'The location you set for this request is shown to help givers exactly as entered.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF6D7C79),
-                  height: 1.45,
+              if (showsSafetyNotice) ...[
+                const SizedBox(height: 16),
+                const GhInfoBanner(
+                  icon: Icons.health_and_safety_outlined,
+                  foreground: GhColors.amber,
+                  background: GhColors.amberSoft,
+                  message:
+                      'This request gets stronger moderation, safer chat defaults, and check-ins before identities are fully shared.',
                 ),
+              ],
+              const SizedBox(height: 12),
+              Text(
+                'Helpers see the location exactly as you enter it above.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall,
               ),
             ],
           ),
         ),
       ),
+      bottomNavigationBar: DecoratedBox(
+        decoration: const BoxDecoration(
+          color: GhColors.surface,
+          border: Border(top: BorderSide(color: GhColors.line)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Center(
+            heightFactor: 1,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: FilledButton.icon(
+                  onPressed: requestLocked || _isSubmitting ? null : _submit,
+                  icon: _isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(
+                          isEditing ? Icons.check_rounded : Icons.send_rounded,
+                        ),
+                  label: Text(
+                    isEditing
+                        ? 'Save changes'
+                        : requestLocked
+                        ? 'You need $requestCreditCost credits to post'
+                        : isFree
+                        ? 'Post emergency request · free'
+                        : 'Post request · uses $requestCreditCost credits',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
-  }
-
-  bool get _allowsExemption {
-    return _emergencyOverride || _category == RequestCategory.emergencySupport;
   }
 
   Future<void> _submit() async {
@@ -522,7 +461,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (_useMyLocation && userLocation.isEmpty) {
       showGhmeraSnackBar(
         context,
-        message: 'Your profile location is missing. Uncheck "Use my location by default" to enter a location manually.',
+        message:
+            'Your profile location is missing. Turn off "Use my location" to enter one manually.',
         type: SnackBarType.warning,
       );
       return;
@@ -532,15 +472,18 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         ? userLocation
         : _locationController.text.trim();
     final isEditing = widget.initialRequest != null;
-    if (!isEditing && !appState.canCreateRequest && !_allowsExemption) {
+    final isFree = creditFreeCategories.contains(_category);
+    if (!isEditing && !appState.canCreateRequest && !isFree) {
       showGhmeraSnackBar(
         context,
-        message: 'This account is on a reciprocity hold. Use an emergency exception or help someone else first.',
+        message:
+            'You need at least $requestCreditCost help credits to post: $askCreditCost to ask and $receiveCreditCost to receive help. Help someone in the community to earn more.',
         type: SnackBarType.error,
       );
       return;
     }
 
+    setState(() => _isSubmitting = true);
     final savedRequest = await (isEditing
         ? appState.updateMyHelpRequest(
             requestId: widget.initialRequest!.id,
@@ -577,11 +520,14 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     if (!mounted) {
       return;
     }
+    setState(() => _isSubmitting = false);
 
     if (savedRequest == null) {
       showGhmeraSnackBar(
         context,
-        message: 'The request could not be saved with the current account state.',
+        message:
+            appState.lastWorkflowError ??
+            'The request could not be saved. Please try again.',
         type: SnackBarType.error,
       );
       return;
@@ -591,7 +537,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       context,
       message: isEditing
           ? 'Your request changes were saved.'
-          : 'Your request was submitted and routed into matching.',
+          : isFree
+          ? 'Your emergency request is live. Nearby helpers are being notified.'
+          : 'Your request is live. $requestCreditCost credits are on hold until the help is done.',
       type: SnackBarType.success,
     );
     Navigator.of(context).pop(savedRequest.id);
@@ -613,52 +561,187 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   }
 }
 
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.title,
-    required this.subtitle,
-    required this.child,
+class _CreditStatusBanner extends StatelessWidget {
+  const _CreditStatusBanner({
+    required this.available,
+    required this.isFree,
+    required this.locked,
+    required this.bypass,
+    required this.onChooseEmergency,
   });
 
+  final int available;
+  final bool isFree;
+  final bool locked;
+  final bool bypass;
+  final VoidCallback onChooseEmergency;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (locked) {
+      final needed = requestCreditCost - available;
+      return GhInfoBanner(
+        icon: Icons.account_balance_wallet_outlined,
+        foreground: GhColors.coral,
+        background: GhColors.coralSoft,
+        title: available <= 0
+            ? 'You are out of help credits'
+            : 'You need $requestCreditCost credits to post',
+        message:
+            'Each request uses $askCreditCost credit to ask and $receiveCreditCost to receive help. '
+            'Help someone in the community to earn $needed more. Emergency requests are always free.',
+        action: TextButton(
+          onPressed: onChooseEmergency,
+          style: TextButton.styleFrom(
+            foregroundColor: GhColors.coral,
+            padding: EdgeInsets.zero,
+            minimumSize: const Size(0, 30),
+            visualDensity: VisualDensity.compact,
+          ),
+          child: const Text('Switch to emergency support'),
+        ),
+      );
+    }
+
+    final message = isFree
+        ? 'Emergency requests are free. No credits will be used.'
+        : bypass && available < requestCreditCost
+        ? 'Your account is community supported, so you can post without credits.'
+        : 'Posting holds $requestCreditCost credits: $askCreditCost for asking and $receiveCreditCost for receiving help. Both are used once the help is done. You have $available available.';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: GhColors.creditSoft,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          const GhCoin(size: 34),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: GhColors.creditDeep,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UrgencyOption extends StatelessWidget {
+  const _UrgencyOption({
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? color.withValues(alpha: 0.12) : GhColors.field,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(GhRadius.control),
+        side: BorderSide(
+          color: selected ? color : GhColors.line,
+          width: selected ? 1.6 : 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(GhRadius.control),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            children: [
+              Icon(Icons.bolt_rounded, color: color, size: 20),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: selected ? color : GhColors.inkSoft,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SafetyToggle extends StatelessWidget {
+  const _SafetyToggle({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
   final String title;
   final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SwitchListTile.adaptive(
+      contentPadding: EdgeInsets.zero,
+      value: value,
+      onChanged: onChanged,
+      secondary: GhIconBadge(
+        icon: icon,
+        color: value ? GhColors.brand : GhColors.inkSoft,
+        size: 38,
+      ),
+      title: Text(title, style: theme.textTheme.titleSmall),
+      subtitle: Text(subtitle, style: theme.textTheme.bodySmall),
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({required this.title, this.subtitle, required this.child});
+
+  final String title;
+  final String? subtitle;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(5),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x10000000),
-            blurRadius: 24,
-            offset: Offset(0, 12),
-          ),
-        ],
-      ),
+    return GhCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
+          Text(title, style: theme.textTheme.titleLarge),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtitle!,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: GhColors.inkSoft,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF61726F),
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 18),
+          ],
+          const SizedBox(height: 16),
           child,
         ],
       ),

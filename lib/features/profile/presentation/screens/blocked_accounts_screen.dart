@@ -5,6 +5,7 @@ import '../../../../app/models/ghmera_models.dart';
 import '../../../../app/providers/ghmera_app_state.dart';
 import '../../../../core/ui/app_snack_bar.dart';
 import '../../../../core/ui/uniform_app_bar.dart';
+import '../../../../core/ui/ghmera_theme.dart';
 
 class BlockedAccountsScreen extends StatelessWidget {
   const BlockedAccountsScreen({super.key});
@@ -28,7 +29,7 @@ class BlockedAccountsScreen extends StatelessWidget {
         .toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F8),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -52,13 +53,13 @@ class BlockedAccountsScreen extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF103B36).withValues(alpha: 0.08),
+                        color: GhColors.brandDark.withValues(alpha: 0.08),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
                         Icons.block_rounded,
                         size: 48,
-                        color: Color(0xFF103B36),
+                        color: GhColors.brandDark,
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -66,7 +67,7 @@ class BlockedAccountsScreen extends StatelessWidget {
                       'No Blocked Accounts',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: const Color(0xFF103B36),
+                        color: GhColors.brandDark,
                         fontSize: 18,
                       ),
                     ),
@@ -110,14 +111,17 @@ class BlockedAccountsScreen extends StatelessWidget {
                     ),
                     leading: CircleAvatar(
                       radius: 22,
-                      backgroundColor: const Color(0xFF103B36),
-                      backgroundImage: blockedUser.profilePhoto != null &&
+                      backgroundColor: GhColors.brandDark,
+                      backgroundImage:
+                          blockedUser.profilePhoto != null &&
                               blockedUser.profilePhoto!.isNotEmpty
                           ? (blockedUser.profilePhoto!.startsWith('http')
-                              ? NetworkImage(blockedUser.profilePhoto!)
-                              : AssetImage(blockedUser.profilePhoto!) as ImageProvider)
+                                ? NetworkImage(blockedUser.profilePhoto!)
+                                : AssetImage(blockedUser.profilePhoto!)
+                                      as ImageProvider)
                           : null,
-                      child: blockedUser.profilePhoto == null ||
+                      child:
+                          blockedUser.profilePhoto == null ||
                               blockedUser.profilePhoto!.isEmpty
                           ? Text(
                               blockedUser.fullName.isNotEmpty
@@ -134,13 +138,13 @@ class BlockedAccountsScreen extends StatelessWidget {
                       blockedUser.fullName,
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF103B36),
+                        color: GhColors.brandDark,
                       ),
                     ),
                     trailing: OutlinedButton(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF103B36),
-                        side: const BorderSide(color: Color(0xFF103B36)),
+                        foregroundColor: GhColors.brandDark,
+                        side: const BorderSide(color: GhColors.brandDark),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -150,12 +154,14 @@ class BlockedAccountsScreen extends StatelessWidget {
                         ),
                       ),
                       onPressed: () {
-                        final success =
-                            appState.unblockUserAccount(blockedUser.id);
+                        final success = appState.unblockUserAccount(
+                          blockedUser.id,
+                        );
                         if (success && context.mounted) {
                           showGhmeraSnackBar(
                             context,
-                            message: '${blockedUser.fullName} has been unblocked.',
+                            message:
+                                '${blockedUser.fullName} has been unblocked.',
                             type: SnackBarType.success,
                           );
                         }

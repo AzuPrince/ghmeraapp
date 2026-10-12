@@ -125,6 +125,30 @@ def _create_custom_sign_in_token(uid: str) -> str:
         )
 
 
+def _require_authenticated(req: https_fn.CallableRequest) -> None:
+    if req.auth is None or not str(req.auth.uid or "").strip():
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Sign in again before deleting your account.",
+        )
+
+
+def _delete_account_for_uid(uid: str) -> dict[str, Any]:
+    user = admin_auth.get_user(uid)
+    email = _normalize_email(user.email or "")
+
+    import account_deletion
+
+    deletion_summary = account_deletion.delete_user_data(uid, email)
+    if email:
+        _registration_code_ref(email).delete()
+        _password_reset_code_ref(email).delete()
+
+    admin_auth.revoke_refresh_tokens(uid)
+    admin_auth.delete_user(uid)
+    return deletion_summary
+
+
 def _verify_stored_code(*, doc_ref, code_identifier: str, code: str) -> dict[str, Any]:
     snap = doc_ref.get()
     if not snap.exists:
@@ -522,6 +546,28 @@ def send_password_reset_code(req: https_fn.CallableRequest) -> dict[str, Any]:
         raise
 
     return {"ok": True, "email": email, "expiresInMinutes": EMAIL_CODE_TTL_MINUTES}
+
+
+@https_fn.on_call(timeout_sec=300)
+def delete_account(req: https_fn.CallableRequest) -> dict[str, Any]:
+    """Delete the authenticated Ghmera account and its associated app data."""
+    _require_authenticated(req)
+    uid = str(req.auth.uid).strip()
+
+    try:
+        deletion_summary = _delete_account_for_uid(uid)
+    except admin_auth.UserNotFoundError:
+        return {"deleted": True}
+    except https_fn.HttpsError:
+        raise
+    except Exception:
+        logger.exception("Account deletion failed for Firebase user %s", uid)
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message="We could not delete your account. Please try again.",
+        )
+
+    return {"deleted": True, **deletion_summary}
 
 
 @https_fn.on_call()

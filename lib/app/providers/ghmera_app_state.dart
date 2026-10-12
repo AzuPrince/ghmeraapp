@@ -10,6 +10,7 @@ import '../database/database.dart';
 import '../models/ghmera_models.dart';
 import '../services/app_firestore_sync_service.dart';
 import '../services/backend_workflow_api_service.dart';
+import '../services/help_credits.dart';
 import '../services/request_matching_engine.dart';
 
 class GhmeraAppState extends ChangeNotifier {
@@ -37,7 +38,6 @@ class GhmeraAppState extends ChangeNotifier {
 
   static const String _defaultCurrentUserId = 'user_current';
   static const int _matchSuggestionLimit = 3;
-  static const int reciprocityFloor = -5;
   static const Set<String> _legacyDemoUserIds = <String>{
     _defaultCurrentUserId,
     'user_ama',
@@ -66,7 +66,12 @@ class GhmeraAppState extends ChangeNotifier {
   StreamSubscription<Position>? _locationPositionSubscription;
   String _currentUserId;
   bool _isHydratingRemoteState = false;
+  bool _accountDeletionInProgress = false;
   Map<String, dynamic>? _pendingLocalDatabase;
+  String? _lastWorkflowError;
+
+  /// The server's explanation for the most recent rejected action, if any.
+  String? get lastWorkflowError => _lastWorkflowError;
 
   List<UserEntity> get _users => _database.users;
   List<HelpRequestEntity> get _requests => _database.requests;
@@ -372,48 +377,46 @@ class GhmeraAppState extends ChangeNotifier {
   List<String> get currentUserTrustFlags =>
       List<String>.unmodifiable(currentUser.trustFlags);
 
-  bool get hasReciprocityActivity {
-    return currentUser.helpGivenCount > 0 ||
-        currentUser.helpReceivedCount > 0 ||
-        currentUser.completedHelpCount > 0 ||
-        currentUser.receivedHelpCount > 0;
+  HelpCreditSummary get currentUserCredits => creditsForUser(_currentUserId);
+
+  HelpCreditSummary creditsForUser(String userId) {
+    return HelpCreditSummary.forUser(userId, _requests);
+  }
+
+  UserHelpStats helpStatsForUser(String userId) {
+    return UserHelpStats.forUser(
+      userById(userId),
+      requests: _requests,
+      reviews: _reviews,
+    );
   }
 
   bool get canCreateRequest {
     return currentUser.canBypassReciprocity ||
-        currentUser.helpBalance >= reciprocityFloor;
+        currentUserCredits.canAffordRequest;
   }
 
-  String get reciprocityMessage {
+  String get creditMessage {
+    final credits = currentUserCredits;
     if (currentUser.canBypassReciprocity) {
-      return 'Your account is exempt from reciprocity holds. You can keep requesting support while the team monitors safety.';
+      return 'Your account is community supported, so you can keep requesting help even when your credits run out.';
     }
-
-    if (!hasReciprocityActivity) {
-      return 'Reciprocity tracking starts after your first matched help exchange.';
+    if (credits.shortfall > 0) {
+      return 'Your balance is ${credits.shortfall} below zero. Help people nearby to earn credits back. You need $requestCreditCost available to post a request.';
     }
-
-    if (currentUser.helpBalance >= 2) {
-      return 'Your help balance is healthy. You are contributing back into the community.';
+    if (!credits.canAffordRequest) {
+      final need = credits.creditsNeededToPost;
+      final heldNote = credits.held > 0
+          ? ' or close an open request to release its held credits'
+          : '';
+      return 'You need $requestCreditCost credits to post a request: $askCreditCost to ask and $receiveCreditCost to receive help. '
+          'Earn $need more by helping someone$heldNote.';
     }
-
-    if (canCreateRequest) {
-      return 'You are approaching the reciprocity floor. Offer help soon so you stay above -5.';
+    if (credits.earned == 0 && credits.spent == 0 && credits.held == 0) {
+      return 'You have $startingHelpCredits welcome credits. Each request uses $requestCreditCost: $askCreditCost for asking and $receiveCreditCost for receiving help. Every person you help earns you $helpEarnedCredits more.';
     }
-
-    return 'You have received support from the community. Please help someone else before creating another request.';
+    return 'You have ${credits.available} credits ready to use. Each request needs $requestCreditCost, and helping others earns you more.';
   }
-
-  double get reciprocityProgress {
-    if (!hasReciprocityActivity) {
-      return 0;
-    }
-
-    final progress = (currentUser.helpBalance - reciprocityFloor) / 10;
-    return progress.clamp(0.0, 1.0).toDouble();
-  }
-
-  int get reciprocityPercent => (reciprocityProgress * 100).round();
 
   double get currentUserAverageReview {
     return currentUser.averageRating;
@@ -1457,6 +1460,7 @@ class GhmeraAppState extends ChangeNotifier {
     Map<String, dynamic> payload = const <String, dynamic>{},
   }) async {
     if (_isHydratingRemoteState) {
+      _lastWorkflowError = 'Ghmera is still syncing. Try again in a moment.';
       return null;
     }
 
@@ -1480,9 +1484,13 @@ class GhmeraAppState extends ChangeNotifier {
         _isHydratingRemoteState = false;
       }
 
+      _lastWorkflowError = null;
       notifyListeners();
       return response;
     } catch (error, stackTrace) {
+      _lastWorkflowError = error is BackendWorkflowApiException
+          ? error.message
+          : 'We could not reach Ghmera. Check your connection and try again.';
       debugPrint('Workflow API operation "$operation" failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return null;
@@ -1625,6 +1633,17 @@ class GhmeraAppState extends ChangeNotifier {
     User? authUser, {
     bool notifyListenersAfter = true,
   }) {
+    if (_accountDeletionInProgress) {
+      if (authUser == null) {
+        return;
+      }
+
+      _accountDeletionInProgress = false;
+      _isHydratingRemoteState = true;
+      unawaited(_restoreAppStateFromFirestore());
+      return;
+    }
+
     var didChange = false;
 
     if (authUser != null) {
@@ -1685,8 +1704,31 @@ class GhmeraAppState extends ChangeNotifier {
   @override
   void notifyListeners() {
     _syncDerivedUserMetrics();
-    _persistAppState();
+    if (!_accountDeletionInProgress) {
+      _persistAppState();
+    }
     super.notifyListeners();
+  }
+
+  Future<void> prepareForAccountDeletion() async {
+    _accountDeletionInProgress = true;
+    _pendingLocalDatabase = null;
+    await _remoteDatabaseSubscription?.cancel();
+    _remoteDatabaseSubscription = null;
+  }
+
+  void cancelAccountDeletion() {
+    if (!_accountDeletionInProgress) {
+      return;
+    }
+    _accountDeletionInProgress = false;
+    _startFirestoreLiveSync();
+  }
+
+  void completeAccountDeletion() {
+    _pendingLocalDatabase = null;
+    _database.clear();
+    _currentUserId = _defaultCurrentUserId;
   }
 
   void _syncDerivedUserMetrics() {
