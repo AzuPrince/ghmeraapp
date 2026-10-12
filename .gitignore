@@ -52,3 +52,10 @@ functions/.env.*
 !functions/.env.example
 functions/.secret.local
 Ghmera_unsigned.ipa
+
+# Android Signing Keys & Credentials
+*.jks
+*.keystore
+key.properties
+android/key.properties
+

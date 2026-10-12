@@ -1,0 +1,11 @@
+# Instructions for Android Release Signing:
+# 1. Generate an Android Upload Keystore using Keytool:
+#    keytool -genkey -v -keystore android/app/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+#
+# 2. Copy this file to 'android/key.properties' (which is git-ignored).
+# 3. Fill in your actual passwords and keystore file path below.
+
+storePassword=YOUR_STORE_PASSWORD_HERE
+keyPassword=YOUR_KEY_PASSWORD_HERE
+keyAlias=upload
+storeFile=upload-keystore.jks
